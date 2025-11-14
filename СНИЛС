@@ -1,0 +1,154 @@
+import re
+import unittest
+import requests
+correct_snils=''
+invalid_snils=''
+
+class TestSNILSValidation(unittest.TestCase):
+
+    def test_two_space_file(self):
+        """Два пробела вместо одного между номером и контрольной суммой в файле"""
+        self.assertFalse(file('2пробела.txt'))
+
+    def test_two_space(self):
+        """Два пробела вместо одного между номером и контрольной суммой"""
+        self.assertFalse(validate_snils('112-233-445  95'))
+
+    def test_many_number_file(self):
+        """Много цифр и тире в файле"""
+        self.assertFalse(file('цифры.txt'))
+
+    def test_null(self):
+        """Пустая строка вместо СНИЛС"""
+        self.assertFalse(validate_snils(''))
+
+    def test_correct_incorrect_snils(self):
+        """Есть правильный и неправильный варианты СНИЛС"""
+        self.assertTrue(validate_snils('123-333-222-95 112-233-445 95'))
+
+    def test_correct_incorrect_file(self):
+        """Есть правильный и неправильный варианты СНИЛС в одном файле"""
+        self.assertTrue(file('СНИЛСЫ.txt'))
+
+    def test_non_digit_file(self):
+        """Буквы вместо цифр СНИЛС в файле"""
+        self.assertFalse(file('Буквы.txt'))
+
+    def test_incorrect_format_file(self):
+        """Неправильный формат СНИЛС в файле"""
+        self.assertFalse(file('Неправильныйформат.txt'))
+
+    def test_invalid_snils_file(self):
+        """Неправильная контрольная сумма СНИЛС в файле"""
+        self.assertFalse(file('Неправильнаясумма.txt'))
+
+    def test_invalid_snils_user(self):
+        """Неправильный пользовательский СНИЛС"""
+        self.assertFalse(validate_snils(invalid_snils))
+
+    def test_valid_snils_user(self):
+        """Правильный пользовательский СНИЛС"""
+        self.assertTrue(validate_snils(correct_snils))
+
+    def test_valid_snils_file(self):
+        """Правильный СНИЛС в файле"""
+        self.assertTrue(file('СНИЛС.txt'))
+
+    def test_valid_many_snils(self):
+        """Несколько правильных снилсов"""
+        self.assertTrue(validate_snils('112-233-445 95 123-456-789 64'))
+
+    def test_invalid_sum_website(self):
+        """Проверяем номер СНИЛС с неправильной контрольной суммой с сайта"""
+        self.assertFalse(web_site('https://qna.habr.com/q/206343'))
+
+    def test_invalid_snils_website(self):
+        """Проверяем номер СНИЛС с сайта, на котором его нет"""
+        self.assertFalse(web_site('https://habr.com/ru/companies/otus/articles/481806/'))
+
+    def test_valid_snils_website(self):
+        """Проверяем корректный номер СНИЛС с сайта"""
+        self.assertTrue(web_site('https://randvar.com/blog/snils-rules'))
+
+    def test_valid_snils(self):
+        """Проверяем корректный номер СНИЛС"""
+        self.assertTrue(validate_snils('112-233-445 95'))
+
+    def test_invalid_length(self):
+        """Номер меньше необходимого количества символов"""
+        self.assertFalse(validate_snils('123-456-789'))  # отсутствует контрольное число
+
+    def test_missing_hyphens_and_spaces(self):
+        """Отсутствие дефисов и пробела"""
+        self.assertFalse(validate_snils('12345678901'))
+
+    def test_non_digit_characters(self):
+        """Использование буквенных символов"""
+        self.assertFalse(validate_snils('ABC-DEF-GHI XY'))
+
+    def test_too_many_digits(self):
+        """Излишнее количество цифр"""
+        self.assertFalse(validate_snils('123-456-7890 01'))
+
+    def test_incorrect_format(self):
+        """Неправильный порядок чисел и знаков препинания"""
+        self.assertFalse(validate_snils('12345678901'))
+
+
+def ras(snils):
+    snils=snils.replace(' ','-')
+    a=snils.split('-')
+    summa=0
+    p=9
+    for i in range(3):
+        q=int(a[i])
+        summa+=(q//100)*p+((q//10)%10)*(p-1)+(q%10)*(p-2)
+        p=p-3
+    t=str(summa%101)
+    if(summa==100 or summa==101):
+        t='00'
+    if (len(t)<2):
+        t='0'+t
+    return(t)
+
+def user():
+    print("Введите ваши данные: ")
+    s=input()
+    return s
+
+def web_site(url:str):
+    response = requests.get(url)
+
+    if response.status_code == 200:
+        html_content = response.text
+    else:
+        print(f"Ошибка загрузки страницы: {response.status_code}")
+        exit()
+    result=validate_snils(html_content)
+    return result
+
+def file(s:str):
+    with open(s, 'r', encoding='utf-8') as file:
+        content = file.read().replace('\\n', '')
+    result=validate_snils(content)
+    return result
+
+def validate_snils(s: str):
+    matches = re.findall(r'\d{3}-\d{3}-\d{3}\s\d{2}', s)
+    schet=0
+    for match in matches:
+        expected_checksum = ras(match)
+        if expected_checksum == match[-2:]:
+            print(f"СНИЛС '{match}' валиден.")
+            schet += 1
+    if (schet == 0):
+        return False
+    else:
+        return True
+
+if __name__ == "__main__":
+    print("Введите корректный номер СНИЛС в формате: XXX-XXX-XXX XX   ")
+    correct_snils=input()
+    print("Введите некорректный номер СНИЛС")
+    invalid_snils=input()
+    unittest.main(argv=[''], verbosity=2, exit=False)
