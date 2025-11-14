@@ -1,0 +1,619 @@
+import json
+import xml.etree.ElementTree as ET
+from xml.dom import minidom
+
+id_direct=0
+id_film=0
+id_user=0
+class Director:
+    def __init__(self, id: int, name: str):
+        self.id = id
+        self.name = name
+        self.films = []
+
+    def add_film(self, film):
+        self.films.append(film)
+
+    def get_info(self):
+        info = f"Режиссёр: {self.name}"
+        if self.films:
+            info += "\nFilms:\n" + '\n'.join([b.title for b in self.films])
+        return info
+
+
+class Review:
+    def __init__(self,  rating: int, comment: str):
+
+        self.rating = rating
+        self.comment = comment
+
+    def get_info(self):
+        return f"{self.rating} com:{self.comment}"
+
+
+class wish:
+    def __init__(self, title: str):
+        self.title=title
+
+    def get_info(self):
+        return f"{self.title}"
+
+
+class subscription:
+    def __init__(self, price: str, expiration_date: str, is_active: bool):
+        self.price=price
+        self.expiration_date=expiration_date
+        self.is_active=is_active
+
+    def activate(self):
+        self.is_active = True
+
+    def deactivate(self):
+        self.is_active = False
+
+    def update_price(self, new_price):
+        self.price = new_price
+
+    def update_expiration_date(self, new_date):
+        self.expiration_date = new_date
+
+    def info(self):
+        return f"Цена: {self.price}, Срок подписки истекает: {self.expiration_date}, Активна: {'Да' if self.is_active else 'Нет'}"
+
+class user:
+    def __init__(self, id: int, name: str, phone: str):
+        self.id = id
+        self.name = name
+        self.phone = phone
+        self.wishes=[]
+        self.Subscriptions: list[subscription]=[]
+
+    def add_wish(self, Wish: wish):
+        self.wishes.append(Wish)
+
+    def get_wish_by_title(self, title):
+        for b in self.wishes:
+            if b.title == title:
+                return b
+
+    def delete_wish(self, Wish: wish):
+        self.wishes.remove(Wish)
+
+    def add_subscription(self, Subscription: subscription):
+        self.Subscriptions.append(Subscription)
+
+    def read_wishes(self):
+        if not self.wishes:
+            print("Нет фильмов в списке.")
+        else:
+            print(f"{self.name}: {', '.join(r.title for r in self.wishes)}")
+
+    def get_subscription(self):
+        if not self.Subscriptions:
+            print("Нет данных о подписке")
+        else:
+            print(f"Цена: {self.Subscriptions[0].price}, Дата окончания: {self.Subscriptions[0].expiration_date}")
+
+    def get_name(self):
+        return self.name
+
+    def get_info(self):
+        return f"{self.name}, {self.phone}"
+
+    def read_info(self):
+        print (f"Имя: {self.name}, Номер: {self.phone}")
+    # класс пользователь
+class film():
+    def __init__(self, id: int, title: str, director: Director):
+        self.id = id
+        self.title = title
+        self.director = director
+        director.add_film(self)
+        self.reviews = []
+
+    def add_review(self, review: Review):
+        self.reviews.append(review)
+
+    def delete_review(self, review: Review):
+        self.reviews.remove(review)
+
+    def read_reviews(self):
+        if not self.reviews:
+            print("Нет отзывов.")
+        else:
+            print("Отзывы:")
+            for r in self.reviews:
+                print(f"{r.film.title}: {r.rating}/10 - {r.comment}")
+
+    def get_info(self):
+        info = f"Title: {self.title}\nРежиссёр: {self.director.name}"
+        if self.reviews:
+            info += "\nОтзыв:"
+            for r in self.reviews:
+                info += f"-{r.title}: {r.rating}/10, {r.comment}"
+        return info
+
+class cinema:
+    def __init__(self):
+        self.films: list[film] = []
+        self.directors: list[Director]=[]
+        self.users: list[user]=[]
+
+    def add_user(self,user1:user):
+        self.users.append(user1)
+
+    def add_film(self, film):
+        self.films.append(film)
+
+    def add_director(self, director: Director):
+        self.directors.append(director)
+
+    def delete_film(self, film):
+        self.films.remove(film)
+
+    def view_films(self):
+        if not self.films:
+            print("Нет фильмов.")
+        else:
+            for r in self.films:
+                print(f"{r.title}: {r.director.name}")
+
+    def view_directors(self):
+        if not self.directors:
+            print("Нет режиссёров.")
+        else:
+            for r in self.directors:
+                print(f"{r.name}")
+
+    def get_film_by_title(self, title):
+        for b in self.films:
+            if b.title == title:
+                return b
+
+    def get_director_by_name(self, name):
+        for b in self.directors:
+            if b.name == name:
+                return b
+
+class DataManager:
+    @staticmethod
+    def save_to_json(Cinema, filename="cinema.json"):
+        data = {
+            "Cinema": {
+                "films": [DataManager.film_to_dict(b) for b in Cinema.films],
+                "users":[DataManager.user_to_dict(b) for b in Cinema.users]
+            }
+        }
+        with open(filename, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"Данные сохранены в {filename}")
+
+    @staticmethod
+    def save_to_xml(cinema2: cinema, filename="cinema.xml"):
+        root = ET.Element('cinema')
+
+        # Добавляем пользователей
+        users_element = ET.SubElement(root, 'users')
+        for u in cinema2.users:
+            user_element = ET.SubElement(users_element, 'user')
+            user_element.set('id', str(u.id))
+
+            name_element = ET.SubElement(user_element, 'name')
+            name_element.text = u.name
+
+            phone_element = ET.SubElement(user_element, 'phone')
+            phone_element.text = u.phone
+
+            wishes_element = ET.SubElement(user_element, 'wishes')
+            for w in u.wishes:
+                wish_element = ET.SubElement(wishes_element, 'wish')
+                wish_element.text = w.get_info()
+
+            subscriptions_element = ET.SubElement(user_element, 'subscriptions')
+            for s in u.Subscriptions:
+                sub_element = ET.SubElement(subscriptions_element, 'subscription')
+                sub_element.set('price', str(s.price))
+                sub_element.set('expiration_date', s.expiration_date)
+
+        directors_element = ET.SubElement(root, 'directors')
+        for d in cinema2.directors:
+            dir_element = ET.SubElement(directors_element, 'director')
+            dir_element.set('id', str(d.id))
+
+            name_element = ET.SubElement(dir_element, 'name')
+            name_element.text = d.name
+
+            films_element = ET.SubElement(dir_element, 'films')
+            for f in d.films:
+                film_element = ET.SubElement(films_element, 'film')
+                film_element.set('id', str(f.id))
+                film_element.text = f.title
+        # Добавляем фильмы
+        films_element = ET.SubElement(root, 'films')
+        for f in cinema2.films:
+            film_element = ET.SubElement(films_element, 'film')
+            film_element.set('id', str(f.id))
+
+            title_element = ET.SubElement(film_element, 'title')
+            title_element.text = f.title
+            director_id_element = ET.SubElement(film_element, 'director_id')
+            director_id_element.text = str(f.director.id)
+            reviews_element = ET.SubElement(film_element, 'reviews')
+            for r in f.reviews:
+                review_element = ET.SubElement(reviews_element, 'review')
+                review_element.set('rating', str(r.rating))
+                review_element.text = r.comment
+
+        tree = ET.ElementTree(root)
+        with open(filename, 'wb') as file:
+            tree.write(file)
+        print(f"Данные сохранены в {filename}")
+
+    @staticmethod
+    def load_from_json(filename="cinema.json"):
+        with open(filename, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        print(data)
+        store_data = data["Cinema"]
+        print(f"Данные загружены из {filename}")
+        print(store_data)
+        return store_data
+
+    @staticmethod
+    def user_to_dict(user1: user):
+        return{
+            "id": user1.id,
+            "name": user1.name,
+            "phone": user1.phone,
+            "wishes": [{'title': b.title} for b in user1.wishes],
+            "subscriptions": [{'price': b.price, 'expiration_date':b.expiration_date} for b in user1.Subscriptions]
+        }
+
+    def film_to_dict(film):
+        return {
+            "id": film.id,
+            "title": film.title,
+            "director": {"id": film.director.id, "name": film.director.name},
+            "reviews":[{'rating': b.rating, 'comment': b.comment} for b in film.reviews]
+        }
+
+    @staticmethod
+    def load_from_xml(filename="cinema.xml"):
+        tree = ET.parse(filename)
+        root = tree.getroot()
+
+        cinema2 = cinema()
+
+        # Загружаем пользователей
+        users_element = root.find('users')
+        for user_element in users_element.findall('user'):
+            uid = int(user_element.attrib['id'])
+            name = user_element.find('name').text
+            phone = user_element.find('phone').text
+
+            new_user = user(uid, name, phone)
+
+            # Загрузка желаний
+            wishes_element = user_element.find('wishes')
+            for wish_element in wishes_element.findall('wish'):
+                title = wish_element.text
+                new_wish = wish(title)
+                new_user.add_wish(new_wish)
+
+            # Загрузка подписок
+            subscriptions_element = user_element.find('subscriptions')
+            for sub_element in subscriptions_element.findall('subscription'):
+                price = float(sub_element.attrib['price'])
+                expiration_date = sub_element.attrib['expiration_date']  # Предполагается строка формата YYYY-MM-DD
+                new_sub = subscription(price, expiration_date, True)
+                new_user.add_subscription(new_sub)
+
+            cinema2.add_user(new_user)
+        directors_element = root.find('directors')
+        for dir_element in directors_element.findall('director'):
+            did = int(dir_element.attrib['id'])
+            name = dir_element.find('name').text
+            new_dir = Director(did, name)
+            cinema2.directors.append(new_dir)
+        # Загружаем фильмы
+        films_element = root.find('films')
+        for film_element in films_element.findall('film'):
+            fid = int(film_element.attrib['id'])
+            title = film_element.find('title').text
+            director_id = int(film_element.find('director_id').text)
+            director = next((d for d in cinema2.directors if d.id == director_id), None)
+            new_film = film(fid, title, director)
+
+            # Загрузка отзывов
+            reviews_element = film_element.find('reviews')
+            for review_element in reviews_element.findall('review'):
+                rating = int(review_element.attrib['rating'])
+                comment = review_element.text
+                new_review = Review(rating, comment)
+                new_film.add_review(new_review)
+
+            cinema2.add_film(new_film)
+        print(f"Данные загружены из {filename}")
+        return cinema2
+
+cinema1=cinema()
+def error():
+    print("Ты ввел неправильные данные, попробуй еще раз:")
+    choose=input()
+    return choose
+
+def start():
+    print("Приветствуем в нашем онлайн кинотеатре!\n"
+          "Для начало выбери в качестве кого ты хочешь зайти (введи соответствующее число)\n"
+          "1.Пользователь\n"
+          "2.Администратор\n"
+          "3.Выйти")
+    choose=input()
+    while(choose!='1' and choose!='2' and choose!='3'):
+        choose=error()
+    if(choose=="1"):
+        user_input()
+    elif(choose=="2"):
+        print("Вы вошли как администратор")
+        help_admin()
+    elif(choose=='3'):
+        return 0
+
+def CheckError(s: str):
+    try:
+        val = int(s)
+        return 0
+    except ValueError:
+        return 1
+
+def user_input():
+    print("Отлично, теперь войдите в аккаунт, введите имя: ")
+    name=input()
+    while (not name):
+        name=error()
+    print("Теперь номер телефона(11 цифр):")
+    number=input()
+    er=CheckError(number)
+    if(len(number)!=11):
+        er=1
+    while(er==1):
+        number=error()
+        er=CheckError(number)
+        if(len(number)!=11):
+            er=1
+    user1=user(5, name, number)
+    cinema1.add_user(user1)
+    print("Вы вошли в аккаунт")
+    help_user(user1)
+
+def help_user(user1:user):
+    print("Вот функции,которые на данный момент доступны, введи соответствующее число, чтобы ими воспользоваться:\n"
+          "1.Оформить подписку\n"
+          "2.Посмотреть список фильмов\n"
+          "3.Оставить отзыв\n"
+          "4.Посмотреть свои данные\n"
+          "5.Добавить фильм в свой список\n"
+          "6.Удалить фильм из своего списка\n"
+          "7.Просмотреть свой список\n"
+          "8.Посмотреть данные о подписке\n"
+          "9.Выйти")
+    choose = input()
+    while (choose != '1' and choose != '2' and choose != '3' and choose != '4' and choose !="5" and choose != '6' and choose != '7' and choose != '8' and choose !="9"):
+        choose = error()
+    if(choose=='1'):
+        user_subscription(user1)
+    if(choose=='2'):
+        cinema1.view_films()
+        help_user(user1)
+    if(choose=='3'):
+        user_review(user1)
+    if(choose=='4'):
+        user1.read_info()
+        help_user(user1)
+    if(choose=='5'):
+        user_wish_add(user1)
+    if (choose == '6'):
+        user_delete_wish(user1)
+    if (choose == '7'):
+        user1.read_wishes()
+        help_user(user1)
+    if (choose == '8'):
+        user1.get_subscription()
+        help_user(user1)
+    if(choose=='9'):
+        DataManager.save_to_json(cinema1, filename="cinema.json")
+        DataManager.save_to_xml(cinema1, filename="cinema.xml")
+        start()
+
+def user_delete_wish(user1:user):
+    print("Введите название фильма, который хотите удалить из своего списка:")
+    title=input()
+    while (not title):
+        title = error()
+    film1 = user1.get_wish_by_title(title)
+    if not film1:
+        print("Такого фильма и не было в вашем списке")
+        help_user(user1)
+    else:
+        user1.delete_wish(film1)
+        print("Фильм удалён из списка")
+        help_user(user1)
+
+def user_wish_add(user1:user):
+    print("Введите название фильма:")
+    title=input()
+    while(not title):
+        title=error()
+    wish1=wish(title)
+    user1.add_wish(wish1)
+    print("Фильм добавлен в список")
+    help_user(user1)
+
+def user_review(user1:user):
+    print("Введите название фильма, на который хотите оставить отзыв:")
+    title=input()
+    while (not title):
+        title=error()
+    film1 = cinema1.get_film_by_title(title)
+    if not film1:
+        print("Такого фильма нет в базе данных")
+        help_user(user1)
+    else:
+        print("Поставьте оценку от 1 до 10:")
+        rating=input()
+        er = CheckError(rating)
+        while (er == 1):
+            rating = error()
+            er=rating_error(rating)
+            if (er==0 and int(rating) > 10):
+                er=1
+        print("Оставьте отзыв:")
+        com=input()
+        while(not com):
+            com=error()
+        review1=Review(int(rating),com)
+        film1.add_review(review1)
+        print("Отзыв добавлен")
+        help_user(user1)
+
+def rating_error(s:str):
+    try:
+        val = int(s)
+        return 0
+    except ValueError:
+        return 1
+
+def user_subscription(user1:user):
+    print("Выберите вариант подписки: "
+          "1.На месяц- стоит 300 рублей"
+          "2.На год- стоит 3000 рублей"
+          "3.Отказаться")
+    choose=input()
+    while (choose != '1' and choose != '2' and choose!='3'):
+        choose = error()
+    if choose=='1':
+        subscription1=subscription('300', '14.12.2025', True)
+        user1.add_subscription(subscription1)
+        print("Подписка оформлена")
+    elif choose=='2':
+        subscription1 = subscription('3000', '14.12.2026', True)
+        user1.add_subscription(subscription1)
+        print("Подписка оформлена")
+    help_user(user1)
+
+def help_admin():
+    print("Вот функции,которые на данный момент доступны, введи соответствующее число, чтобы ими воспользоваться:\n"
+          "1.Добавить режиссёра\n"
+          "2.Добавить фильм\n"
+          "3.Удалить фильм\n"
+          "4.Выйти")
+    choose = input()
+    while (choose != '1' and choose != '2' and choose != '3' and choose!='4'):
+        choose = error()
+    if (choose == '1'):
+        admin_director()
+    if (choose == '2'):
+        admin_film()
+    if (choose == '3'):
+        admin_delete_film()
+    if(choose=='4'):
+        DataManager.save_to_json(cinema1, filename="cinema.json")
+        DataManager.save_to_xml(cinema1, filename="cinema.xml")
+        start()
+
+def admin_director():
+    global id_direct
+    print("Введите имя режиссёра:")
+    name = input()
+    while (not name):
+        name=error()
+    id_direct += 1
+    director1=Director(id_direct, name)
+    cinema1.add_director(director1)
+    print("Режиссёр успешно добавлен")
+    help_admin()
+
+def admin_film():
+    global id_film
+    print("Введите название фильма:")
+    title=input()
+    while(not title):
+        title=error()
+    print("Введите имя режиссера(он должен быть в базе кинотеатра):")
+    name=input()
+    while (not name):
+        namee = error()
+    director1=cinema1.get_director_by_name(name)
+    if not director1:
+        print("Такого режиссёра нет. Сначала добавьте его.")
+        admin_director()
+    else:
+        id_film+=1
+        film1=film(id_film,title, director1)
+        cinema1.add_film(film1)
+        print("Фильм успешно добавлен")
+        help_admin()
+
+def admin_delete_film():
+    print("Введите название фильма, который хотите удалить:")
+    title=input()
+    while (not title):
+        title = error()
+    film1 = cinema1.get_film_by_title(title)
+    if not film1:
+        print("Такого фильма и не было в базе данных")
+        help_admin()
+    else:
+        cinema1.delete_film(film1)
+        print("Фильм удалён")
+        help_admin()
+
+if __name__ == "__main__":
+    start()
+    loaded_store_json = DataManager.load_from_json("cinema.json")
+    loaded_store_xml = DataManager.load_from_xml("cinema.xml")
+
+    for b in loaded_store_json['films']:
+        print("Фильмы:")
+        print(f"{b['title']} ({b['director']['name']})")
+        if 'reviews' in b:
+            print("Отзывы:")
+            for c in b['reviews']:
+                print(f"{c['rating']} {c['comment']}")
+        print("---Данные с json файла---")
+
+    for b in loaded_store_json['users']:
+        print("Пользователи:")
+        print(f"{b['name']} ({b['phone']})")
+        if 'wishes' in b:
+            print("Список любимых фильмов:")
+            for c in b['wishes']:
+                print(f"{c['title']}")
+        if 'subscriptions' in b:
+            print("Подписка:")
+            for c in b['subscriptions']:
+                print(f"Цена:{c['price']},Дата окончания:{c['expiration_date']} ")
+        print("---Данные с json файла---")
+
+    for film in loaded_store_xml.films:
+        print(f"{film.title} ({film.director.name})")
+        if not film.reviews:
+            print("Нет отзывов")
+        else:
+            for c in film.reviews:
+                print(f"{c.rating}, {c.comment}")
+        print("----Данные с xml файла----")
+
+    for user in loaded_store_xml.users:
+        print(f"{user.name} ({user.phone})")
+        if not user.wishes:
+            print("Нет фильмов в списке")
+        else:
+            for c in user.wishes:
+                print(f"{c.title}")
+        if not user.Subscriptions:
+            print("Нет данных о подписке")
+        else:
+            for c in user.Subscriptions:
+                print(f"Цена:{c.price}, Дата окончания:{c.expiration_date}")
+        print("----Данные с xml файла----")
