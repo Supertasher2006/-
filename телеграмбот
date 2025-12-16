@@ -1,0 +1,386 @@
+import telebot
+import random
+import sqlite3
+import os
+import requests
+from pathlib import Path
+from telebot import types
+easy=['Кто написал роман "Преступление и наказание"? Варианты ответов: А) Лев Толстой Б) Антон Чехов В) Фёдор Достоевский Г) Александр Пушкин',
+      'Столица Италии: А) Рим Б) Милан В) Венеция Г) Флоренция',
+      'Автор романа "Война и мир": А) Ф.М.Достоевский Б) Л.Н.Толстой В) А.С.Пушкин Г) Н.В.Гоголь',
+      'Символ медицины: А) Яблоко Б) Орёл В) Сердце Г) Змея вокруг чаши',
+      'Самая высокая гора мира: А) Эверест Б) Килиманджаро В) Эльбрус Г) Монблан',
+      'Цвет морской волны: А) Зелёный Б) Голубой В) Бирюзовый Г) Сиреневый',
+      'Основатель Apple: А) Стив Джобс Б) Марк Цукерберг В) Билл Гейтс Г) Ларри Пейдж',
+      'Самое большое озеро в мире: А) Байкал Б) Каспийское море В) Виктория Г) Гурон',
+      'Известный русский композитор XIX века: А) Пётр Чайковский Б) Владимир Высоцкий В) Игорь Стравинский Г) Михаил Булгаков',
+      'Самый распространённый газ в атмосфере Земли:А) Азот Б) Кислород В) Углекислый газ Г) Водяной пар',
+      'Главный праздник в России 9 мая: А) День космонавтики Б) Новый год В) День Победы Г) Рождество',
+      'Автором картины "Черный квадрат" является: А) Казимир Малевич Б) Василий Кандинский В) Илья Репин Г) Исаак Левитан',
+      'Основная валюта Японии: А) Йена Б) Евро В) Франк Г) Доллар',
+      'Обозначение химического элемента золота: А) Au Б) Ag В) Fe Г) Cu',
+      'Название первого спутника Земли: А) Луна-1 Б) Спутник-1 В) Восток-1 Г) Венера-1',
+      'Единица измерения силы тока: А) Вольт Б) Ампер В) Ом Г) Джоуль',
+      'Основатель теории относительности: А) Альберт Эйнштейн Б) Николай Коперник В) Галилео Галилей Г) Исаак Ньютон',
+      'Русский полководец XVIII века: А) Георгий Жуков Б) Алексей Ермолов В) Михаил Кутузов Г) Александр Суворов',
+      'Главная река Москвы: А) Дон Б) Ока В) Москва-река Г) Волга',
+      'Наиболее известная русская народная сказка: А) Колобок Б) Гадкий утёнок В) Золушка Г) Красная Шапочка',
+      'Блюдо русской кухни: А) Тирамису Б) Картошка фри В) Борщ Г) Пицца']
+easy_answer=['в','а','б','г','а','в','а','б','а','а','в','а','а','а','б','б','а','г','в','а','в']
+medium=['Как назывался последний корабль экспедиции Магеллана, вернувшийся в Испанию в 1522 году? А) Тринидад, Б) Консепсьон, В) Виктория, Г) Сан-Антонио',
+        'Какой древнегреческий философ утверждал, что добродетель есть знание? А) Платон, Б) Аристотель, В) Демокрит, Г) Сократ',
+        'Кем была основана первая постоянная обсерватория в Москве в XVI веке? А) Иваном Грозным, Б) Петром Первым, В) Борисом Годуновым, Г) Алексеем Михайловичем',
+        'Из какой оперы Мусоргского взят романс "Рассвет на Москве-реке"? А) Хованщина, Б) Борис Годунов, В) Садко, Г) Евгений Онегин',
+        'Что такое дактило-хореический стих? А) Чередование двухсложных стоп, Б) Разновидность гекзаметра, В) Тип рифмы, Г) Форма сонета',
+        'Какой исторический документ завершил Смутное время в России? А) Договор с Польшей, Б) Земский собор 1613 года, В) Деулинское перемирие, Г) Манифест Петра III',
+        'По какому закону физики рассчитывается сила тяжести тела? А) Закон Архимеда, Б) Закон Кулона, В) Закон Всемирного тяготения, Г) Закон сохранения энергии',
+        'Что представляет собой структура ДНК согласно модели Джеймса Уотсона и Фрэнсиса Крика? А) Одинарная спираль, Б) Двойная спираль, В) Линейная цепь, Г) Кубическое кольцо',
+        'Какой памятник архитектуры украшен знаменитыми мозаиками Василия Васнецова? А) Храм Христа Спасителя, Б) Покровский собор (Храм Василия Блаженного), В) Церковь Покрова-на-Нерли, Г) Троице-Сергиева лавра',
+        'В каком городе находился штаб-квартира нацистской партии Германии в годы Третьего рейха? А) Мюнхен, Б) Берлин, В) Гамбург, Г) Нюрнберг',
+        'Как звали последнего императора Византии, убитого турками в 1453 году? А) Константин XI, Б) Юстиниан I, В) Иоанн VIII, Г) Мануил II',
+        'Какие реки образуют реку Амур? А) Шилка и Аргунь, Б) Енисей и Ангара, В) Обь и Иртыш, Г) Лена и Витим',
+        'Кто автор трагедии "Федра"? А) Софокл, Б) Еврипид, В) Сенека, Г) Эсхил',
+        'В честь кого назван минерал берилл? А) Богиня любви Афродита, Б) Греческий герой Ахиллес, В) Древнеримская богиня здоровья Салюс, Г) Бог войны Марс',
+        'Чем известна битва при Пуатье в 1356 году? А) Победой Карла Великого над сарацинами, Б) Великим поражением французов в Столетнюю войну, В) Завоеванием Нормандии Вильгельмом Завоевателем, Г) Освобождение Парижа Жанной д Арк',
+        'В каком произведении впервые появляется Шерлок Холмс? А) Этюд в багровых тонах, Б) Приключения Шерлока Холмса, В) Собака Баскервилей, Г) Знак четырех',
+        'Что означало слово "красный" в эпоху революции 1917 года? А) Красный цвет флага царства, Б) Радость победы пролетариата, В) Цвет крови революционеров, Г) Призыв к действию ("Красный петух")',
+        'Какой известный итальянский художник создал фреску "Тайная вечеря"? А) Рафаэль, Б) Леонардо да Винчи, В) Микеланджело, Г) Боттичелли',
+        'Что изучает палеонтология? А) Наследственность организмов, Б) Исчезновение видов животных и растений, В) Геологические слои земли, Г) Остатки древних живых существ',
+        'Какое произведение стало основой для гимна Советского Союза? А) Повесть временных лет, Б) Книга Владимира Маяковского "Хорошее отношение к лошадям", В) Роман Николая Островского "Как закалялась сталь", Г) Песнь Александра Александровича Александрова и Сергея Михалкова']
+medium_answer=['в','г','в','б','а','б','в','б','б','г','а','а','в','в','г','а','в','б','г','г']
+hard=['Кто был первым русским учёным, избранным иностранным членом Французской академии наук в XVIII веке? А) Михаил Ломоносов, Б) Даниил Бернулли, В) Степан Петровский, Г) Павел Паллас',
+      'Как называется астрономическое явление, возникающее при сближении нейтронных звёзд? А) Гаммасобытие, Б) Гамма-всплеск, В) Черная дыра, Г) Космическая струна',
+      'Какая болезнь получила название благодаря римскому врачу Цельсу, отметившему её симптом — краснота кожи? А) Инфаркт миокарда, Б) Рак желудка, В) Ревматизм, Г) Аппендицит',
+      'Как зовут автора первой научной классификации вирусов? A)Дмитрию Ивановскому, Б) Андрею Ковалеву, В) Константину Кириченко, Г) Сергею Гинзбургу',
+      'Что было главным элементом одежды средневекового русского князя, символом власти и достоинства? А) Рубаха, Б) Шапка Мономаха, В) Сапоги, Г) Перчатки',
+      'Какой советский учёный разработал первую отечественную электронную вычислительную машину (ЭВМ)? А) Сергей Королёв, Б) Анатолий Киташов, В) Сергей Лебедев, Г) Андрей Сахаров',
+      'Что такое филлотаксис? А)Наука о растениях, Б) Закономерность расположения листьев на стебле растения, В) Метод изучения структуры цветка, Г) Вид генетического анализа растений',
+      'Какое вещество раньше называли "живым серебром"? А)Ртуть, Б) Золото, В) Железо, Г) Медь',
+      'В каком государстве древности существовала система демосфинксиса, позволявшая гражданам выступать с законодательными инициативами? А) Китай, Б) Индия, В) Древняя Греция, Г) Египет',
+      'Как называлась научная экспедиция Арктики под руководством Георгия Седова в 1912—1914 годах? А) Экспедиция Франца-Иосифа, Б) Русско-Американская экспедиция, В) Русская полярная экспедиция, Г) Седовская арктическая экспедиция',
+      'Какой вид насекомых первыми освоил паразитирование внутри тел муравьёв? А) Осы-паразитоиды, Б) Муравьи-добытчики, В) Термиты-поработители, Г) Прыгуны-тляжи',
+      'Какая формула описывает число связей атомов углерода в бензоле? А) C₆H₆, Б) CH₂O, В) C₁₂H₂₂O₁₁, Г) CO₂',
+      'Как называется международное соглашение, регулирующее торговлю оружием и боеприпасами? А) Конвенция ООН против коррупции, Б) Международная конвенция о торговле оружием, В) Договор о нераспространении ядерного оружия, Г) Венская конвенция о дипломатических сношениях',
+      'Что представлял собой московский Кремль XV-XVI веков, построенный итальянскими архитекторами? А) Дворцовый комплекс, Б) Монастырь, В) Фортификационное сооружение, Г) Рыночную площадь',
+      'В какой науке применяется термин "квантовая запутанность"? А) Химия, Б) Биология, В) Квантовая физика, Г) Астрономия',
+      'Почему дельта реки Нигер носит название "Дельта нигерийского фантома"? А) Особенность ландшафта, Б) Исторически зафиксированная аномалия течения воды, В) Тайна происхождения названия неизвестна, Г) Вымышленное название из художественной литературы',
+      'Какой выдающийся биолог ввёл понятие "гомеостаз"? А) Жан-Батист Ламарк, Б) Уолтер Брэдфорд Кэннон, В) Карл Линней, Г) Чарльз Дарвин',
+      'Когда началась эпоха Великих географических открытий? А) XIII век, Б) XV век, В) XVI век, Г) XVII век',
+      'Что означает латинское выражение "tabula rasa"? А) Совершенное здоровье, Б) Полностью стертая доска, В) Белый лист бумаги, Г) Подготовка к празднику',
+      'Что лежит в основе метода квантовых вычислений? А) Принцип неопределённости Гейзенберга, Б) Квантовые суперпозиции и запутанности, В) Теория хаоса, Г) Классическая логика']
+hard_answer=['а','б','в','а','б','в','б','а','в','г','а','а','б','в','в','в','б','б','б','б']
+flags=['','Бельгия','Португалия','Англия','КНДР','Вьетнам','Бразилия','Китай','Нидерланды','Чехия','Франция','Египет',
+       'Индия','Палестина','Кувейт','Россия']
+true=['Космический полёт Юрия Гагарина длился дольше суток.',
+      'Кофе был открыт пастухами, заметившими бодрость овец после поедания кофейных ягод.',
+      'Волга — самая длинная река Европы.',
+      'Во времена Петра I были введены медали «За пьянство».',
+      'Чай является напитком №1 в мире по популярности потребления.',
+      'Солнце восходит именно над восточным горизонтом каждый день',
+      'Самым крупным живущим животным на Земле считается синий кит.',
+      'Средняя продолжительность сна взрослого человека составляет около 10 часов в сутки.',
+      'Полностью вегетарианская диета включает употребление рыбы.',
+      'Санкт-Петербург — самый северный город-миллионер в мире.']
+true_answer=['Ложь','Правда','Правда','Правда','Ложь','Ложь','Правда','Ложь','Ложь','Правда']
+API_URL = 'http://127.0.0.1:5000//api//questions'
+easyq=[]
+mediumq=[]
+hardq=[]
+num=0
+answer=' '
+quest=0
+ran=0
+hint=0
+hint1=0
+hint2=0
+pn=0
+bot=telebot.TeleBot('8447457625:AAGMZ7UE1QCJ6-WSj7HVQ3MCfTWoUdIW3PM')
+@bot.message_handler(commands=['start'])
+def main(message):
+    bot.send_message(message.chat.id, 'Привет,я телеграм бот с интересными вопросами . Вот список команд,которые сейчас доступны:'
+                                      '/question - если хочешь проверить свои знания в различных областях.                 '
+                                      '/millioner - если хочешь сыграть в Кто хочет стать миллионером.')
+    bot.send_message(message.chat.id,'/flags- если хочешь проверить свои знания в флагах разных стран.')
+    bot.send_message(message.chat.id,'/true - если хочешь сыграть в правду или ложь.')
+    conn=sqlite3.connect('itproger.sql')
+    cur=conn.cursor()
+    cur.execute('CREATE TABLE IF NOT EXISTS users (id int auto_increment primary key, q int, yd int, result int, games int)')
+    conn.commit()
+    cur.close()
+    conn.close()
+@bot.message_handler(commands=['help'])
+def help(message):
+    markup = types.ReplyKeyboardMarkup()
+    markup.add(types.KeyboardButton('Случайные вопросы'))
+    markup.add(types.KeyboardButton('Кто хочет стать миллионером'))
+    markup.add(types.KeyboardButton('Флаги'))
+    markup.add(types.KeyboardButton('Правда или ложь'))
+    bot.send_message(message.chat.id, f"Вот список команд,которые сейчас доступны:"
+                                      f"/question - если хочешь проверить свои знания в различных областях."
+                                      f"/millioner - если хочешь сыграть в Кто хочет стать миллионером."
+                                      f"/flags- если хочешь проверить свои знания в флагах разных стран."
+                                      f"/true - если хочешь сыграть в правду или ложь.", reply_markup=markup)
+    bot.register_next_step_handler(message, help_text)
+def help_text(message):
+    if (message.text == 'Случайные вопросы' or message.text == '/question'):
+        bot.send_message(message.chat.id, 'Введите любой символ:')
+        bot.register_next_step_handler(message, send_random_question)
+    elif (message.text == 'Кто хочет стать миллионером' or message.text == '/millioner'):
+        bot.send_message(message.chat.id, 'Введите любой символ:')
+        bot.register_next_step_handler(message, millioner_question)
+    elif (message.text == 'Флаги' or message.text == '/flags'):
+        bot.send_message(message.chat.id, 'Введите любой символ:')
+        bot.register_next_step_handler(message, flags_question)
+    elif (message.text == 'Правда или ложь' or message.text == '/true'):
+        bot.send_message(message.chat.id, 'Введите любой символ:')
+        bot.register_next_step_handler(message, true_question)
+
+@bot.message_handler(commands=['flags'])
+def flags_question(message):
+    global num
+    markup = types.ReplyKeyboardMarkup()
+    markup.add(types.KeyboardButton('Меню'))
+    all_files_in_directory = os.listdir('C:\\проектыпопроге\\телеграмбот\\флаги')
+    file = random.choice(all_files_in_directory)
+    path = Path(file)
+    num = int(path.stem)
+    doc = open('C:\\проектыпопроге\\телеграмбот\\флаги' + '/' + file, 'rb')
+    bot.send_document(message.from_user.id, doc, reply_markup=markup)
+
+    bot.register_next_step_handler(message, check_flags)
+def fetch_random_question():
+    response = requests.get(API_URL)
+    if response.status_code == 200:
+        data = response.json()
+        if data:
+            num_elements = len(data)
+            # Шаг 2: Генерируем случайное число от 0 до num_elements - 1
+            random_index = random.randrange(num_elements)
+            # Шаг 3: Извлекаем элемент по этому индексу
+            selected_item = data[random_index]
+            # Шаг 4: Теперь получаем поле 'question'
+            return selected_item['question'], selected_item['answer']
+        return None
+def random_millioner():
+    global ran
+    num_elements=len(hard)
+    random_index = random.randrange(num_elements)
+    return random_index
+# Команда "/question" выдаёт случайный вопрос
+@bot.message_handler(commands=['question'])
+def send_random_question(message):
+    global answer
+    markup = types.ReplyKeyboardMarkup()
+    markup.add(types.KeyboardButton('Меню'))
+    question, answer = fetch_random_question()
+    if question:
+        bot.reply_to(message, question, reply_markup=markup)
+        bot.register_next_step_handler(message, proverka1)
+    else:
+        bot.reply_to(message, "Что-то пошло не так... Попробуй позже.")
+
+def proverka1(message):
+    if message.text == 'Меню':
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, help)
+    elif (message.text.lower() == answer):
+        bot.send_message(message.chat.id, 'Правильно')
+        bot.register_next_step_handler(message, send_random_question)
+    else:
+        bot.send_message(message.chat.id, f'Неправильно. Правильный ответ: {answer}')
+        bot.register_next_step_handler(message, send_random_question)
+
+@bot.message_handler(commands=['millioner'])
+def millioner_question(message):
+    global quest, ran
+    quest+=1
+    markup = types.ReplyKeyboardMarkup()
+    if hint==0:
+        markup.add(types.KeyboardButton('Право на ошибку'))
+    if hint1==0:
+        markup.add(types.KeyboardButton('50 на 50'))
+    if hint2==0:
+        markup.add(types.KeyboardButton('Заменить вопрос'))
+    markup.add(types.KeyboardButton('Меню'))
+    bot.send_message(message.chat.id, f"Вопрос {quest}: ", reply_markup=markup)
+    if quest<6:
+        ran=random_millioner()
+        while ran in easyq:
+            ran=random_millioner()
+        easyq.append(ran)
+        bot.send_message(message.chat.id, easy[ran])
+        bot.register_next_step_handler(message, millioner_check)
+    elif 5<quest<11:
+        ran = random_millioner()
+        while ran in mediumq:
+            ran = random_millioner()
+        mediumq.append(ran)
+        bot.send_message(message.chat.id, medium[ran])
+        bot.register_next_step_handler(message, millioner_check1)
+    elif quest>10:
+        ran = random_millioner()
+        while ran in hardq:
+            ran = random_millioner()
+        hardq.append(ran)
+        bot.send_message(message.chat.id, hard[ran])
+        bot.register_next_step_handler(message, millioner_check2)
+def millioner_check(message):
+    global pn, hint, hint1, hint2, quest
+    if message.text == 'Меню':
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, help)
+    elif message.text == 'Право на ошибку':
+        pn=1
+        bot.send_message(message.chat.id, 'Введите первый вариант:')
+        bot.register_next_step_handler(message, millioner_check)
+    elif message.text == '50 на 50':
+        hint1=2
+        if easy_answer[ran]=='а':
+            bot.send_message(message.chat.id, f'Осталось два варианта: а б')
+        else:
+            bot.send_message(message.chat.id, f'Осталось два варианта: а {easy_answer[ran]}')
+        bot.register_next_step_handler(message, millioner_check)
+    elif message.text=='Заменить вопрос':
+        quest-=1
+        hint2=2
+        bot.register_next_step_handler(message, millioner_question)
+    elif (message.text.lower() == easy_answer[ran]):
+        bot.send_message(message.chat.id, 'Правильно')
+        bot.register_next_step_handler(message, millioner_question)
+    elif(message.text=='Прекратить практику'):
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, maths)
+    elif(message.text!=easy_answer[ran] and pn==1):
+        pn=0
+        hint=1
+        bot.send_message(message.chat.id, 'Неправильно, но вас спасает право на ошибку, введите второй вариант')
+        bot.register_next_step_handler(message, millioner_question)
+    else:
+        quest = 0
+        hint = 0
+        hint1 = 0
+        hint2 = 0
+        pn = 0
+        bot.send_message(message.chat.id, 'Вы проиграли')
+        bot.register_next_step_handler(message, millioner_question)
+def millioner_check1(message):
+    global pn, hint, hint1, hint2, quest
+    if message.text == 'Меню':
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, help)
+    elif message.text == 'Право на ошибку':
+        pn = 1
+        bot.send_message(message.chat.id, 'Введите первый вариант:')
+        bot.register_next_step_handler(message, millioner_check1)
+    elif message.text == '50 на 50':
+        hint1 = 2
+        if medium_answer[ran] == 'а':
+            bot.send_message(message.chat.id, f'Осталось два варианта: а б')
+        else:
+            bot.send_message(message.chat.id, f'Осталось два варианта: а {medium_answer[ran]}')
+        bot.register_next_step_handler(message, millioner_check1)
+    elif message.text=='Заменить вопрос':
+        quest-=1
+        hint2=2
+        bot.register_next_step_handler(message, millioner_question)
+    elif (message.text.lower() == medium_answer[ran]):
+        bot.send_message(message.chat.id, 'Правильно')
+        bot.register_next_step_handler(message, millioner_question)
+    elif(message.text=='Прекратить практику'):
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, maths)
+    elif (message.text != medium_answer[ran] and pn == 1):
+        pn = 0
+        hint = 1
+        bot.send_message(message.chat.id, 'Неправильно, но вас спасает право на ошибку, введите второй вариант')
+        bot.register_next_step_handler(message, millioner_question)
+    else:
+        quest = 0
+        hint = 0
+        hint1 = 0
+        hint2 = 0
+        pn = 0
+        bot.send_message(message.chat.id, 'Вы проиграли')
+        bot.register_next_step_handler(message, millioner_question)
+def millioner_check2(message):
+    global pn, hint, hint1, hint2, quest
+    if message.text == 'Меню':
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, help)
+    elif message.text == 'Право на ошибку':
+        pn = 1
+        bot.send_message(message.chat.id, 'Введите первый вариант:')
+        bot.register_next_step_handler(message, millioner_check2)
+    elif message.text == '50 на 50':
+        hint1 = 2
+        if hard_answer[ran] == 'а':
+            bot.send_message(message.chat.id, f'Осталось два варианта: а б')
+        else:
+            bot.send_message(message.chat.id, f'Осталось два варианта: а {hard_answer[ran]}')
+        bot.register_next_step_handler(message, millioner_check2)
+    elif message.text=='Заменить вопрос':
+        quest-=1
+        hint2=2
+        bot.register_next_step_handler(message, millioner_question)
+    elif (message.text.lower() == hard_answer[ran]):
+        bot.send_message(message.chat.id, 'Правильно')
+        bot.register_next_step_handler(message, millioner_question)
+    elif(message.text=='Прекратить практику'):
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, maths)
+    elif (message.text != hard_answer[ran] and pn == 1):
+        pn = 0
+        hint = 1
+        bot.send_message(message.chat.id, 'Неправильно, но вас спасает право на ошибку, введите второй вариант')
+        bot.register_next_step_handler(message, millioner_question)
+    else:
+        quest=0
+        hint=0
+        hint1=0
+        hint2=0
+        pn=0
+        bot.send_message(message.chat.id, 'Вы проиграли')
+        bot.register_next_step_handler(message, millioner_question)
+
+def check_flags(message):
+    if message.text=='Меню':
+        bot.send_message(message.chat.id, 'Введите любой символ')
+        bot.register_next_step_handler(message, help)
+    elif message.text==flags[num]:
+        bot.send_message(message.chat.id, 'Правильно')
+        bot.register_next_step_handler(message, flags_question)
+    else:
+        bot.send_message(message.chat.id, 'Неправильно')
+        bot.register_next_step_handler(message, flags_question)
+
+@bot.message_handler(commands=['true'])
+def true_question(message):
+    global ran
+    keyboard = telebot.types.InlineKeyboardMarkup()
+    btn1 = telebot.types.InlineKeyboardButton(text="Правда", callback_data="Правда")
+    btn2 = telebot.types.InlineKeyboardButton(text="Ложь", callback_data="Ложь")
+    btn3 = telebot.types.InlineKeyboardButton(text="Меню", callback_data="Меню")
+    keyboard.row(btn1, btn2, btn3)
+    ran = random_true()
+    bot.send_message(message.chat.id, true[ran], reply_markup=keyboard)
+
+    #bot.register_next_step_handler(message, check_true)
+
+@bot.callback_query_handler(func=lambda call: True)
+def check_true(call):
+    if call.data=='Меню':
+        bot.answer_callback_query(call.id, text="Введите любой символ")
+        help(call.message)
+    elif call.data==true_answer[ran]:
+        bot.answer_callback_query(call.id, text="Правильно!")
+        true_question(call.message)
+    else:
+        bot.answer_callback_query(call.id, text="Неправильно :(")
+        true_question(call.message)
+
+def random_true():
+    global ran
+    num_elements = len(true)
+    random_index = random.randrange(num_elements)
+    return random_index
+bot.polling(none_stop=True)
