@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Журнал "Трамплин" | Авторизация</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="logo" href="index.html">Журнал "Трамплин"</a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Открыть меню">Меню</button>
+      <nav id="mainNav">
+        <ul>
+          <li><a href="index.html">Главная</a></li>
+          <li><a href="stories.html">Истории</a></li>
+          <li><a href="add-story.html">Добавить историю</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container auth-wrap">
+        <h2>Авторизация</h2>
+        <p>Создайте аккаунт или войдите, чтобы публиковать новые истории.</p>
+
+        <div class="cards auth-grid">
+          <article class="card">
+            <h3>Регистрация</h3>
+            <form class="form-grid" id="registerForm">
+              <label>
+                Email
+                <input type="email" name="email" required>
+              </label>
+              <label>
+                Пароль
+                <input type="password" name="password" minlength="4" required>
+              </label>
+              <button type="submit" class="btn">Зарегистрироваться</button>
+            </form>
+          </article>
+
+          <article class="card">
+            <h3>Вход</h3>
+            <form class="form-grid" id="loginForm">
+              <label>
+                Email
+                <input type="email" name="email" required>
+              </label>
+              <label>
+                Пароль
+                <input type="password" name="password" required>
+              </label>
+              <button type="submit" class="btn">Войти</button>
+            </form>
+          </article>
+        </div>
+
+        <p class="auth-status" id="authStatus"></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>© 2026 Журнал "Трамплин". Все права защищены.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>

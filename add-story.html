@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Журнал "Трамплин" | Добавить историю</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="logo" href="index.html">Журнал "Трамплин"</a>
+      <button class="menu-toggle" id="menuToggle" aria-label="Открыть меню">Меню</button>
+      <nav id="mainNav">
+        <ul>
+          <li><a href="index.html">Главная</a></li>
+          <li><a href="stories.html">Истории</a></li>
+          <li><a href="login.html">Авторизация</a></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="section">
+      <div class="container">
+        <h2>Добавить новую историю</h2>
+        <p>Публикация доступна только после входа.</p>
+
+        <div class="auth-status" id="storyAccessStatus"></div>
+
+        <form class="form-grid" id="addStoryForm">
+          <label>
+            Заголовок
+            <input type="text" name="title" minlength="4" required>
+          </label>
+          <div class="story-builder">
+            <div class="story-builder-head">
+              <p class="help-text">Соберите историю из блоков текста и медиа в нужном порядке.</p>
+              <div class="builder-actions">
+                <button type="button" class="btn btn-light" id="addTextBlockBtn">+ Текст</button>
+                <button type="button" class="btn btn-light" id="addMediaBlockBtn">+ Фото/видео</button>
+              </div>
+            </div>
+            <div id="storyBlocks" class="story-blocks"></div>
+          </div>
+          <button type="submit" class="btn">Опубликовать историю</button>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container">
+      <p>© 2026 Журнал "Трамплин". Все права защищены.</p>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+</body>
+</html>
