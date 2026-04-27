@@ -42,9 +42,15 @@ body {
 }
 
 .logo {
-  font-weight: 700;
+  display: inline-block;
+  width: 72px;
+  height: 72px;
   text-decoration: none;
-  color: var(--primary-dark);
+  background: url("logo-tramplin.png") center / contain no-repeat;
+  text-indent: -9999px;
+  overflow: hidden;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 nav ul {
