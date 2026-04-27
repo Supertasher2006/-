@@ -501,6 +501,60 @@ function setupImagePreview() {
   });
 }
 
+function setupStoriesTabs() {
+  const tabsRoot = document.querySelector('[data-role="stories-tabs"]');
+  if (!tabsRoot) return;
+  const buttons = Array.from(tabsRoot.querySelectorAll("[data-tab]"));
+  const panels = Array.from(document.querySelectorAll("[data-panel]"));
+  if (!buttons.length || !panels.length) return;
+
+  const activate = (tabId) => {
+    buttons.forEach((btn) => btn.classList.toggle("active", btn.dataset.tab === tabId));
+    panels.forEach((panel) => panel.classList.toggle("hidden", panel.dataset.panel !== tabId));
+    if (tabId === "yours") {
+      renderUserStories();
+    }
+  };
+
+  buttons.forEach((btn) => {
+    btn.addEventListener("click", () => activate(btn.dataset.tab));
+  });
+
+  activate("aces");
+}
+
+async function copyToClipboard(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function shareLink(kind) {
+  const url = window.location.origin;
+  const copied = await copyToClipboard(url);
+  if (!copied) {
+    window.prompt("Скопируйте ссылку на сайт:", url);
+  }
+
+  if (kind === "tg") {
+    window.location.href = `https://t.me/share/url?url=${encodeURIComponent(url)}`;
+    return;
+  }
+  if (kind === "vk") {
+    window.location.href = `https://vk.com/share.php?url=${encodeURIComponent(url)}`;
+  }
+}
+
+function setupShareButtons() {
+  const tgBtn = document.querySelector('[data-role="share-tg"]');
+  const vkBtn = document.querySelector('[data-role="share-vk"]');
+  tgBtn?.addEventListener("click", () => shareLink("tg"));
+  vkBtn?.addEventListener("click", () => shareLink("vk"));
+}
+
 document.querySelectorAll('[data-role="logout-btn"]').forEach((button) => {
   button.addEventListener("click", async () => {
     try {
@@ -528,6 +582,8 @@ async function bootstrap() {
   await renderStoryDetails();
   setupComments();
   setupImagePreview();
+  setupStoriesTabs();
+  setupShareButtons();
   setupAuthForms();
   setupAddStoryForm();
   setupStoryBuilder();

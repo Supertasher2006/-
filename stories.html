@@ -39,22 +39,62 @@
           <a class="btn hidden" href="add-story.html" data-role="add-story-link">Добавить новую историю</a>
           <button class="btn btn-light hidden" type="button" data-role="logout-btn">Выйти</button>
         </div>
-        <div class="cards">
-          <article class="card">
-            <h3>Когда стало легче</h3>
-            <p>Опыт восстановления после выгорания и поиска баланса в повседневной жизни.</p>
-          </article>
-          <article class="card">
-            <h3>Путь к себе</h3>
-            <p>Личная история о принятии себя и важности поддержки близких.</p>
-          </article>
-          <article class="card">
-            <h3>Сила маленьких шагов</h3>
-            <p>О том, как регулярные привычки помогли справиться с тревогой.</p>
-          </article>
+
+        <div class="stories-tabs" data-role="stories-tabs">
+          <button class="tab-btn active" type="button" data-tab="aces">Сбитые лётчики</button>
+          <button class="tab-btn" type="button" data-tab="fate">Судьба человека</button>
+          <button class="tab-btn" type="button" data-tab="forge">Кузница талантов</button>
+          <button class="tab-btn" type="button" data-tab="yours">Ваши истории</button>
         </div>
-        <h3 class="user-stories-title">Новые истории от пользователей</h3>
-        <div class="cards" id="userStoriesList"></div>
+
+        <div class="stories-tab-panels">
+          <div class="tab-panel" data-panel="aces">
+            <h3 class="user-stories-title">Сбитые лётчики</h3>
+            <div class="cards">
+              <article class="card">
+                <h3>Возвращение после падения</h3>
+                <p>История о том, как неудача стала точкой роста и новым стартом.</p>
+              </article>
+              <article class="card">
+                <h3>Вторая попытка</h3>
+                <p>Когда кажется, что всё потеряно, важно найти опору и продолжить путь.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="fate">
+            <h3 class="user-stories-title">Судьба человека</h3>
+            <div class="cards">
+              <article class="card">
+                <h3>Путь к себе</h3>
+                <p>Личная история о принятии себя и важности поддержки близких.</p>
+              </article>
+              <article class="card">
+                <h3>Сила маленьких шагов</h3>
+                <p>О том, как регулярные привычки помогли справиться с тревогой.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="forge">
+            <h3 class="user-stories-title">Кузница талантов</h3>
+            <div class="cards">
+              <article class="card">
+                <h3>Когда стало легче</h3>
+                <p>Опыт восстановления после выгорания и поиска баланса в повседневной жизни.</p>
+              </article>
+              <article class="card">
+                <h3>Первые публикации</h3>
+                <p>Как маленькие победы помогают поверить в себя и раскрыть потенциал.</p>
+              </article>
+            </div>
+          </div>
+
+          <div class="tab-panel hidden" data-panel="yours">
+            <h3 class="user-stories-title">Ваши истории</h3>
+            <div class="cards" id="userStoriesList"></div>
+          </div>
+        </div>
       </div>
     </section>
   </main>
