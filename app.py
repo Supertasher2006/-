@@ -15,6 +15,8 @@ from werkzeug.utils import secure_filename
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("TRAMPLIN_DB_PATH", str(BASE_DIR / "tramplin.db")))
 UPLOADS_DIR = Path(os.environ.get("TRAMPLIN_UPLOADS_DIR", str(BASE_DIR / "uploads")))
+ADMIN_EMAIL = os.environ.get("TRAMPLIN_ADMIN_EMAIL", "admin@tramplin.local").strip().lower()
+ADMIN_PASSWORD = os.environ.get("TRAMPLIN_ADMIN_PASSWORD", "admin1234").strip()
 ALLOWED_EXTENSIONS = {
     "jpg",
     "jpeg",
@@ -53,7 +55,8 @@ def init_db() -> None:
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             email TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user'
         )
         """
     )
@@ -66,6 +69,18 @@ def init_db() -> None:
             author_email TEXT NOT NULL,
             media_filename TEXT,
             media_type TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS section_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section TEXT NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            author_email TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -114,12 +129,39 @@ def init_db() -> None:
         cur.execute("ALTER TABLE stories ADD COLUMN media_filename TEXT")
     if "media_type" not in story_columns:
         cur.execute("ALTER TABLE stories ADD COLUMN media_type TEXT")
+    cur.execute("PRAGMA table_info(users)")
+    user_columns = {row["name"] for row in cur.fetchall()}
+    if "role" not in user_columns:
+        cur.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'")
+
+    if ADMIN_EMAIL and len(ADMIN_PASSWORD) >= 4:
+        cur.execute("SELECT id FROM users WHERE email = ?", (ADMIN_EMAIL,))
+        admin_row = cur.fetchone()
+        if admin_row:
+            cur.execute("UPDATE users SET role = 'admin' WHERE email = ?", (ADMIN_EMAIL,))
+        else:
+            cur.execute(
+                "INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'admin')",
+                (ADMIN_EMAIL, generate_password_hash(ADMIN_PASSWORD)),
+            )
     conn.commit()
     conn.close()
 
 
 def current_user_email() -> str | None:
     return session.get("user_email")
+
+
+def current_user_role() -> str:
+    return session.get("user_role", "user")
+
+
+def ensure_admin() -> tuple[None, int] | None:
+    if not current_user_email():
+        return None, 401
+    if current_user_role() != "admin":
+        return None, 403
+    return None
 
 
 def get_extension(filename: str) -> str:
@@ -152,7 +194,7 @@ def register() -> Any:
     cur = conn.cursor()
     try:
         cur.execute(
-            "INSERT INTO users (email, password_hash) VALUES (?, ?)",
+            "INSERT INTO users (email, password_hash, role) VALUES (?, ?, 'user')",
             (email, generate_password_hash(password)),
         )
         conn.commit()
@@ -162,7 +204,8 @@ def register() -> Any:
 
     conn.close()
     session["user_email"] = email
-    return jsonify({"ok": True, "email": email})
+    session["user_role"] = "user"
+    return jsonify({"ok": True, "email": email, "role": "user"})
 
 
 @app.post("/api/login")
@@ -173,7 +216,7 @@ def login() -> Any:
 
     conn = get_db()
     cur = conn.cursor()
-    cur.execute("SELECT password_hash FROM users WHERE email = ?", (email,))
+    cur.execute("SELECT password_hash, role FROM users WHERE email = ?", (email,))
     row = cur.fetchone()
     conn.close()
 
@@ -181,19 +224,85 @@ def login() -> Any:
         return jsonify({"error": "Неверный email или пароль."}), 401
 
     session["user_email"] = email
-    return jsonify({"ok": True, "email": email})
+    session["user_role"] = row["role"] or "user"
+    return jsonify({"ok": True, "email": email, "role": session["user_role"]})
 
 
 @app.post("/api/logout")
 def logout() -> Any:
     session.pop("user_email", None)
+    session.pop("user_role", None)
     return jsonify({"ok": True})
 
 
 @app.get("/api/me")
 def me() -> Any:
     email = current_user_email()
-    return jsonify({"authenticated": bool(email), "email": email})
+    role = current_user_role() if email else None
+    return jsonify({"authenticated": bool(email), "email": email, "role": role, "isAdmin": role == "admin"})
+
+
+@app.get("/api/sections")
+def list_section_articles() -> Any:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT id, section, title, content, author_email, created_at
+        FROM section_articles
+        ORDER BY id DESC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+    result: dict[str, list[dict[str, Any]]] = {"aces": [], "fate": [], "forge": []}
+    for row in rows:
+        section = row["section"]
+        if section not in result:
+            continue
+        result[section].append(
+            {
+                "id": row["id"],
+                "title": row["title"],
+                "content": row["content"],
+                "author": row["author_email"],
+                "createdAt": row["created_at"],
+            }
+        )
+    return jsonify(result)
+
+
+@app.post("/api/admin/sections/articles")
+def create_section_article() -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    data = request.get_json(silent=True) or {}
+    section = (data.get("section") or "").strip()
+    title = (data.get("title") or "").strip()
+    content = (data.get("content") or "").strip()
+    if section not in {"aces", "fate", "forge"}:
+        return jsonify({"error": "Выберите корректный раздел."}), 400
+    if len(title) < 4:
+        return jsonify({"error": "Заголовок должен быть минимум 4 символа."}), 400
+    if len(content) < 20:
+        return jsonify({"error": "Текст статьи должен быть минимум 20 символов."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        INSERT INTO section_articles (section, title, content, author_email)
+        VALUES (?, ?, ?, ?)
+        """,
+        (section, title, content, current_user_email()),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
 
 
 @app.get("/api/stories")
@@ -455,6 +564,25 @@ def create_comment(story_id: int) -> Any:
     )
     conn.commit()
     conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/admin/comments/<int:comment_id>")
+def delete_comment(comment_id: int) -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM comments WHERE id = ?", (comment_id,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    if deleted == 0:
+        return jsonify({"error": "Комментарий не найден."}), 404
     return jsonify({"ok": True})
 
 

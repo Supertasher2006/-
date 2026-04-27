@@ -1,6 +1,8 @@
 const menuToggle = document.getElementById("menuToggle");
 const mainNav = document.getElementById("mainNav");
 let currentUserEmail = null;
+let currentUserRole = null;
+let isAdmin = false;
 let mediaFieldCounter = 0;
 const BACKEND_HINT =
   'Сервер недоступен. Запустите "python app.py" в папке проекта и откройте сайт по адресу http://127.0.0.1:5000 (не через файл).';
@@ -35,8 +37,12 @@ async function loadSession() {
   try {
     const me = await api("/api/me");
     currentUserEmail = me.authenticated ? me.email : null;
+    currentUserRole = me.authenticated ? me.role : null;
+    isAdmin = Boolean(me.authenticated && me.isAdmin);
   } catch {
     currentUserEmail = null;
+    currentUserRole = null;
+    isAdmin = false;
   }
 }
 
@@ -51,6 +57,50 @@ function updateAuthUi() {
   document.querySelectorAll('[data-role="logout-btn"]').forEach((el) => {
     el.classList.toggle("hidden", !isAuthed);
   });
+  const adminPanel = document.getElementById("adminArticlePanel");
+  if (adminPanel) {
+    adminPanel.classList.toggle("hidden", !isAdmin);
+  }
+}
+
+function renderArticleCards(rootId, articles, emptyText) {
+  const root = document.getElementById(rootId);
+  if (!root) return;
+  root.innerHTML = "";
+  if (!articles.length) {
+    root.innerHTML = `<article class="card"><p>${emptyText}</p></article>`;
+    return;
+  }
+  articles.forEach((article) => {
+    const card = document.createElement("article");
+    card.className = "card";
+    const title = document.createElement("h3");
+    title.textContent = article.title;
+    const content = document.createElement("p");
+    content.textContent = article.content;
+    const meta = document.createElement("p");
+    meta.className = "story-meta";
+    meta.textContent = `Автор: ${article.author}`;
+    card.append(title, content, meta);
+    root.appendChild(card);
+  });
+}
+
+async function renderSectionArticles() {
+  const acesRoot = document.getElementById("sectionAcesList");
+  const fateRoot = document.getElementById("sectionFateList");
+  const forgeRoot = document.getElementById("sectionForgeList");
+  if (!acesRoot && !fateRoot && !forgeRoot) return;
+  try {
+    const sections = await api("/api/sections");
+    renderArticleCards("sectionAcesList", sections.aces || [], "Пока нет статей в этом разделе.");
+    renderArticleCards("sectionFateList", sections.fate || [], "Пока нет статей в этом разделе.");
+    renderArticleCards("sectionForgeList", sections.forge || [], "Пока нет статей в этом разделе.");
+  } catch {
+    renderArticleCards("sectionAcesList", [], "Не удалось загрузить статьи раздела.");
+    renderArticleCards("sectionFateList", [], "Не удалось загрузить статьи раздела.");
+    renderArticleCards("sectionForgeList", [], "Не удалось загрузить статьи раздела.");
+  }
 }
 
 async function renderUserStories() {
@@ -257,6 +307,17 @@ async function renderStoryDetails() {
       authorName.textContent = comment.author;
       item.appendChild(text);
       item.appendChild(authorName);
+      if (isAdmin) {
+        const controls = document.createElement("div");
+        controls.className = "comment-admin-actions";
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-light comment-delete-btn";
+        removeBtn.dataset.commentId = String(comment.id);
+        removeBtn.textContent = "Удалить комментарий";
+        controls.appendChild(removeBtn);
+        item.appendChild(controls);
+      }
       commentsList.appendChild(item);
     });
   }
@@ -330,6 +391,7 @@ function setupStoryBuilder() {
 function setupAuthForms() {
   const registerForm = document.getElementById("registerForm");
   const loginForm = document.getElementById("loginForm");
+  const adminLoginForm = document.getElementById("adminLoginForm");
   const authStatus = document.getElementById("authStatus");
   if (!registerForm || !loginForm || !authStatus) return;
 
@@ -343,6 +405,8 @@ function setupAuthForms() {
         body: JSON.stringify({ email, password }),
       });
       currentUserEmail = data.email;
+      currentUserRole = data.role || "user";
+      isAdmin = currentUserRole === "admin";
       authStatus.textContent = "Регистрация успешна. Вы вошли в систему.";
       updateAuthUi();
       registerForm.reset();
@@ -361,11 +425,72 @@ function setupAuthForms() {
         body: JSON.stringify({ email, password }),
       });
       currentUserEmail = data.email;
+      currentUserRole = data.role || "user";
+      isAdmin = currentUserRole === "admin";
       authStatus.textContent = "Вы успешно вошли. Можно добавлять истории.";
       updateAuthUi();
       loginForm.reset();
     } catch (error) {
       authStatus.textContent = error.message;
+    }
+  });
+
+  adminLoginForm?.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const email = adminLoginForm.email.value.trim().toLowerCase();
+    const password = adminLoginForm.password.value.trim();
+    try {
+      const data = await api("/api/login", {
+        method: "POST",
+        body: JSON.stringify({ email, password }),
+      });
+      if (data.role !== "admin") {
+        currentUserEmail = null;
+        currentUserRole = null;
+        isAdmin = false;
+        await api("/api/logout", { method: "POST" });
+        throw new Error("Этот аккаунт не имеет прав администратора.");
+      }
+      currentUserEmail = data.email;
+      currentUserRole = data.role;
+      isAdmin = true;
+      authStatus.textContent = "Вы вошли как администратор.";
+      updateAuthUi();
+      adminLoginForm.reset();
+    } catch (error) {
+      authStatus.textContent = error.message;
+    }
+  });
+}
+
+function setupAdminArticleForm() {
+  const form = document.getElementById("adminArticleForm");
+  const status = document.getElementById("adminArticleStatus");
+  if (!form || !status) return;
+  status.textContent = isAdmin
+    ? `Вы вошли как администратор: ${currentUserEmail}`
+    : "Только администратор может публиковать статьи в разделы.";
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (!isAdmin) {
+      status.textContent = "Нужен вход администратора.";
+      return;
+    }
+    const payload = {
+      section: form.section.value,
+      title: form.title.value.trim(),
+      content: form.content.value.trim(),
+    };
+    try {
+      await api("/api/admin/sections/articles", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      form.reset();
+      status.textContent = "Статья опубликована.";
+      await renderSectionArticles();
+    } catch (error) {
+      status.textContent = error.message;
     }
   });
 }
@@ -437,6 +562,26 @@ function setupDefaultForms() {
 }
 
 function setupComments() {
+  document.querySelectorAll(".comment-delete-btn").forEach((button) => {
+    button.addEventListener("click", async () => {
+      if (!isAdmin) {
+        alert("Удалять комментарии может только администратор.");
+        return;
+      }
+      const commentId = button.dataset.commentId;
+      if (!commentId) return;
+      if (!window.confirm("Удалить этот комментарий?")) return;
+      try {
+        await api(`/api/admin/comments/${commentId}`, { method: "DELETE" });
+        await renderStoryDetails();
+        setupComments();
+        setupImagePreview();
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+  });
+
   document.querySelectorAll(".comment-form").forEach((form) => {
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
@@ -560,6 +705,8 @@ document.querySelectorAll('[data-role="logout-btn"]').forEach((button) => {
     try {
       await api("/api/logout", { method: "POST" });
       currentUserEmail = null;
+      currentUserRole = null;
+      isAdmin = false;
       updateAuthUi();
       alert("Вы вышли из аккаунта.");
     } catch (error) {
@@ -578,6 +725,7 @@ async function bootstrap() {
 
   await loadSession();
   updateAuthUi();
+  await renderSectionArticles();
   await renderUserStories();
   await renderStoryDetails();
   setupComments();
@@ -585,6 +733,7 @@ async function bootstrap() {
   setupStoriesTabs();
   setupShareButtons();
   setupAuthForms();
+  setupAdminArticleForm();
   setupAddStoryForm();
   setupStoryBuilder();
   setupDefaultForms();

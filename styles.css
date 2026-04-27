@@ -389,6 +389,7 @@ label {
 }
 
 input,
+select,
 textarea {
   width: 100%;
   border: 1px solid var(--border);
@@ -396,6 +397,10 @@ textarea {
   padding: 10px;
   font: inherit;
   background: #fff;
+}
+
+.comment-admin-actions {
+  margin-top: 10px;
 }
 
 .social-links {
