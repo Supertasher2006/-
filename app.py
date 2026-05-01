@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import uuid
+import json
 from pathlib import Path
 from typing import Any
 
@@ -99,6 +100,44 @@ def init_db() -> None:
     )
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS section_article_media (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            filename TEXT NOT NULL,
+            media_type TEXT NOT NULL,
+            media_order INTEGER NOT NULL,
+            FOREIGN KEY (article_id) REFERENCES section_articles(id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS section_article_blocks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            block_order INTEGER NOT NULL,
+            block_type TEXT NOT NULL,
+            text_content TEXT,
+            filename TEXT,
+            media_type TEXT,
+            FOREIGN KEY (article_id) REFERENCES section_articles(id)
+        )
+        """
+    )
+    cur.execute(
+        """
+        CREATE TABLE IF NOT EXISTS section_article_comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            article_id INTEGER NOT NULL,
+            author_email TEXT NOT NULL,
+            content TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (article_id) REFERENCES section_articles(id)
+        )
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS story_media (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             story_id INTEGER NOT NULL,
@@ -174,6 +213,26 @@ def is_allowed_media(filename: str) -> bool:
 
 def media_kind(filename: str) -> str:
     return "video" if get_extension(filename) in VIDEO_EXTENSIONS else "image"
+
+
+def parse_blocks_payload(raw_blocks: str | None) -> list[dict[str, Any]]:
+    if not raw_blocks:
+        return []
+    try:
+        parsed = json.loads(raw_blocks)
+    except Exception:
+        raise ValueError("Некорректный формат блоков истории.")
+    return parsed if isinstance(parsed, list) else []
+
+
+def remove_uploaded_file(filename: str | None) -> None:
+    if not filename:
+        return
+    path = UPLOADS_DIR / filename
+    try:
+        path.unlink(missing_ok=True)
+    except Exception:
+        pass
 
 
 init_db()
@@ -253,10 +312,75 @@ def list_section_articles() -> Any:
         ORDER BY id DESC
         """
     )
-    rows = cur.fetchall()
+    article_rows = cur.fetchall()
+    cur.execute(
+        """
+        SELECT id, article_id, filename, media_type, media_order
+        FROM section_article_media
+        ORDER BY media_order ASC
+        """
+    )
+    media_rows = cur.fetchall()
+    cur.execute(
+        """
+        SELECT id, article_id, block_order, block_type, text_content, filename, media_type
+        FROM section_article_blocks
+        ORDER BY block_order ASC
+        """
+    )
+    block_rows = cur.fetchall()
+    cur.execute(
+        """
+        SELECT id, article_id, author_email, content, created_at
+        FROM section_article_comments
+        ORDER BY id ASC
+        """
+    )
+    comment_rows = cur.fetchall()
     conn.close()
+
+    comments_by_article: dict[int, list[dict[str, Any]]] = {}
+    for comment in comment_rows:
+        article_id = comment["article_id"]
+        comments_by_article.setdefault(article_id, []).append(
+            {
+                "id": comment["id"],
+                "author": comment["author_email"],
+                "content": comment["content"],
+                "createdAt": comment["created_at"],
+            }
+        )
+
+    media_by_article: dict[int, list[dict[str, Any]]] = {}
+    for media in media_rows:
+        article_id = media["article_id"]
+        media_by_article.setdefault(article_id, []).append(
+            {
+                "id": media["id"],
+                "url": f"/uploads/{media['filename']}",
+                "type": media["media_type"],
+                "order": media["media_order"],
+                "filename": media["filename"],
+            }
+        )
+
+    blocks_by_article: dict[int, list[dict[str, Any]]] = {}
+    for block in block_rows:
+        article_id = block["article_id"]
+        item: dict[str, Any] = {
+            "type": block["block_type"],
+            "order": block["block_order"],
+        }
+        if block["block_type"] == "text":
+            item["text"] = block["text_content"] or ""
+        else:
+            item["url"] = f"/uploads/{block['filename']}" if block["filename"] else None
+            item["mediaType"] = block["media_type"]
+            item["filename"] = block["filename"]
+        blocks_by_article.setdefault(article_id, []).append(item)
+
     result: dict[str, list[dict[str, Any]]] = {"aces": [], "fate": [], "forge": []}
-    for row in rows:
+    for row in article_rows:
         section = row["section"]
         if section not in result:
             continue
@@ -267,6 +391,9 @@ def list_section_articles() -> Any:
                 "content": row["content"],
                 "author": row["author_email"],
                 "createdAt": row["created_at"],
+                "media": media_by_article.get(row["id"], []),
+                "blocks": blocks_by_article.get(row["id"], []),
+                "comments": comments_by_article.get(row["id"], []),
             }
         )
     return jsonify(result)
@@ -280,16 +407,19 @@ def create_section_article() -> Any:
         msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
         return jsonify({"error": msg}), status
 
-    data = request.get_json(silent=True) or {}
-    section = (data.get("section") or "").strip()
-    title = (data.get("title") or "").strip()
-    content = (data.get("content") or "").strip()
+    section = (request.form.get("section") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    content = (request.form.get("content") or "").strip()
+    raw_blocks = request.form.get("blocks")
     if section not in {"aces", "fate", "forge"}:
         return jsonify({"error": "Выберите корректный раздел."}), 400
     if len(title) < 4:
         return jsonify({"error": "Заголовок должен быть минимум 4 символа."}), 400
-    if len(content) < 20:
-        return jsonify({"error": "Текст статьи должен быть минимум 20 символов."}), 400
+
+    try:
+        blocks_payload = parse_blocks_payload(raw_blocks)
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 400
 
     conn = get_db()
     cur = conn.cursor()
@@ -300,8 +430,302 @@ def create_section_article() -> Any:
         """,
         (section, title, content, current_user_email()),
     )
+    article_id = cur.lastrowid
+
+    if blocks_payload:
+        text_total = 0
+        media_order = 0
+        block_order = 0
+        for block in blocks_payload:
+            block_order += 1
+            block_type = block.get("type")
+            if block_type == "text":
+                text = (block.get("text") or "").strip()
+                if not text:
+                    continue
+                text_total += len(text)
+                cur.execute(
+                    """
+                    INSERT INTO section_article_blocks (article_id, block_order, block_type, text_content)
+                    VALUES (?, ?, 'text', ?)
+                    """,
+                    (article_id, block_order, text),
+                )
+                continue
+            if block_type == "media":
+                field_name = (block.get("field") or "").strip()
+                media_file = request.files.get(field_name)
+                if not media_file or not media_file.filename:
+                    continue
+                original_name = secure_filename(media_file.filename)
+                if not is_allowed_media(original_name):
+                    conn.rollback()
+                    conn.close()
+                    return (
+                        jsonify(
+                            {
+                                "error": "Разрешены форматы: jpg, jpeg, jfif, png, gif, webp, mp4, webm, mov."
+                            }
+                        ),
+                        400,
+                    )
+                ext = get_extension(original_name)
+                filename = f"{uuid.uuid4().hex}.{ext}"
+                m_type = media_kind(original_name)
+                media_file.save(UPLOADS_DIR / filename)
+                media_order += 1
+                cur.execute(
+                    """
+                    INSERT INTO section_article_blocks (article_id, block_order, block_type, filename, media_type)
+                    VALUES (?, ?, 'media', ?, ?)
+                    """,
+                    (article_id, block_order, filename, m_type),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO section_article_media (article_id, filename, media_type, media_order)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (article_id, filename, m_type, media_order),
+                )
+        if text_total < 20:
+            conn.rollback()
+            conn.close()
+            return jsonify({"error": "Суммарный текст статьи должен быть минимум 20 символов."}), 400
+        cur.execute("UPDATE section_articles SET content = ? WHERE id = ?", ("[structured]", article_id))
+    else:
+        if len(content) < 20:
+            conn.rollback()
+            conn.close()
+            return jsonify({"error": "Текст статьи должен быть минимум 20 символов."}), 400
+
     conn.commit()
     conn.close()
+    return jsonify({"ok": True})
+
+
+@app.put("/api/admin/sections/articles/<int:article_id>")
+def update_section_article(article_id: int) -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    section = (request.form.get("section") or "").strip()
+    title = (request.form.get("title") or "").strip()
+    content = (request.form.get("content") or "").strip()
+    raw_blocks = request.form.get("blocks")
+    if section not in {"aces", "fate", "forge"}:
+        return jsonify({"error": "Выберите корректный раздел."}), 400
+    if len(title) < 4:
+        return jsonify({"error": "Заголовок должен быть минимум 4 символа."}), 400
+
+    try:
+        blocks_payload = parse_blocks_payload(raw_blocks)
+    except ValueError as err:
+        return jsonify({"error": str(err)}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM section_articles WHERE id = ?", (article_id,))
+    exists = cur.fetchone()
+    if not exists:
+        conn.close()
+        return jsonify({"error": "Статья не найдена."}), 404
+
+    cur.execute("SELECT id, filename, media_type FROM section_article_media WHERE article_id = ?", (article_id,))
+    old_media_rows = cur.fetchall()
+    old_media_by_id = {row["id"]: row for row in old_media_rows}
+    cur.execute("DELETE FROM section_article_blocks WHERE article_id = ?", (article_id,))
+    cur.execute("DELETE FROM section_article_media WHERE article_id = ?", (article_id,))
+
+    final_content = content
+    kept_old_media_filenames: set[str] = set()
+    if blocks_payload:
+        text_total = 0
+        media_order = 0
+        block_order = 0
+        for block in blocks_payload:
+            block_order += 1
+            block_type = block.get("type")
+            if block_type == "text":
+                text = (block.get("text") or "").strip()
+                if not text:
+                    continue
+                text_total += len(text)
+                cur.execute(
+                    """
+                    INSERT INTO section_article_blocks (article_id, block_order, block_type, text_content)
+                    VALUES (?, ?, 'text', ?)
+                    """,
+                    (article_id, block_order, text),
+                )
+                continue
+            if block_type == "media_existing":
+                existing_media_id_raw = block.get("mediaId")
+                try:
+                    existing_media_id = int(existing_media_id_raw)
+                except (TypeError, ValueError):
+                    continue
+                media_row = old_media_by_id.get(existing_media_id)
+                if not media_row:
+                    continue
+                filename = media_row["filename"]
+                m_type = media_row["media_type"]
+                kept_old_media_filenames.add(filename)
+                media_order += 1
+                cur.execute(
+                    """
+                    INSERT INTO section_article_blocks (article_id, block_order, block_type, filename, media_type)
+                    VALUES (?, ?, 'media', ?, ?)
+                    """,
+                    (article_id, block_order, filename, m_type),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO section_article_media (article_id, filename, media_type, media_order)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (article_id, filename, m_type, media_order),
+                )
+                continue
+            if block_type == "media":
+                field_name = (block.get("field") or "").strip()
+                media_file = request.files.get(field_name)
+                if not media_file or not media_file.filename:
+                    continue
+                original_name = secure_filename(media_file.filename)
+                if not is_allowed_media(original_name):
+                    conn.rollback()
+                    conn.close()
+                    return (
+                        jsonify(
+                            {
+                                "error": "Разрешены форматы: jpg, jpeg, jfif, png, gif, webp, mp4, webm, mov."
+                            }
+                        ),
+                        400,
+                    )
+                ext = get_extension(original_name)
+                filename = f"{uuid.uuid4().hex}.{ext}"
+                m_type = media_kind(original_name)
+                media_file.save(UPLOADS_DIR / filename)
+                media_order += 1
+                cur.execute(
+                    """
+                    INSERT INTO section_article_blocks (article_id, block_order, block_type, filename, media_type)
+                    VALUES (?, ?, 'media', ?, ?)
+                    """,
+                    (article_id, block_order, filename, m_type),
+                )
+                cur.execute(
+                    """
+                    INSERT INTO section_article_media (article_id, filename, media_type, media_order)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (article_id, filename, m_type, media_order),
+                )
+        if text_total < 20:
+            conn.rollback()
+            conn.close()
+            return jsonify({"error": "Суммарный текст статьи должен быть минимум 20 символов."}), 400
+        final_content = "[structured]"
+    elif len(content) < 20:
+        conn.rollback()
+        conn.close()
+        return jsonify({"error": "Текст статьи должен быть минимум 20 символов."}), 400
+
+    cur.execute(
+        """
+        UPDATE section_articles
+        SET section = ?, title = ?, content = ?
+        WHERE id = ?
+        """,
+        (section, title, final_content, article_id),
+    )
+    conn.commit()
+    conn.close()
+
+    old_media_filenames = {row["filename"] for row in old_media_rows}
+    media_to_delete = old_media_filenames - kept_old_media_filenames
+    for filename in media_to_delete:
+        remove_uploaded_file(filename)
+
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/admin/sections/articles/<int:article_id>")
+def delete_section_article(article_id: int) -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT filename FROM section_article_media WHERE article_id = ?", (article_id,))
+    media_filenames = [row["filename"] for row in cur.fetchall()]
+    cur.execute("DELETE FROM section_article_comments WHERE article_id = ?", (article_id,))
+    cur.execute("DELETE FROM section_article_blocks WHERE article_id = ?", (article_id,))
+    cur.execute("DELETE FROM section_article_media WHERE article_id = ?", (article_id,))
+    cur.execute("DELETE FROM section_articles WHERE id = ?", (article_id,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+
+    if deleted == 0:
+        return jsonify({"error": "Статья не найдена."}), 404
+
+    for filename in media_filenames:
+        remove_uploaded_file(filename)
+    return jsonify({"ok": True})
+
+
+@app.post("/api/sections/articles/<int:article_id>/comments")
+def create_section_article_comment(article_id: int) -> Any:
+    email = current_user_email()
+    if not email:
+        return jsonify({"error": "Чтобы комментировать, нужно войти в аккаунт."}), 401
+
+    data = request.get_json(silent=True) or {}
+    content = (data.get("content") or "").strip()
+    if len(content) < 2:
+        return jsonify({"error": "Комментарий слишком короткий."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM section_articles WHERE id = ?", (article_id,))
+    article = cur.fetchone()
+    if not article:
+        conn.close()
+        return jsonify({"error": "Статья не найдена."}), 404
+    cur.execute(
+        "INSERT INTO section_article_comments (article_id, author_email, content) VALUES (?, ?, ?)",
+        (article_id, email, content),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/admin/sections/comments/<int:comment_id>")
+def delete_section_article_comment(comment_id: int) -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM section_article_comments WHERE id = ?", (comment_id,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    if deleted == 0:
+        return jsonify({"error": "Комментарий не найден."}), 404
     return jsonify({"ok": True})
 
 
@@ -413,8 +837,6 @@ def create_story() -> Any:
     blocks_payload: list[dict[str, Any]] = []
     if raw_blocks:
         try:
-            import json
-
             blocks_payload = json.loads(raw_blocks)
         except Exception:
             return jsonify({"error": "Некорректный формат блоков истории."}), 400

@@ -41,8 +41,9 @@
         </div>
 
         <article class="card hidden" id="adminArticlePanel">
-          <h3>Панель администратора: добавить статью в раздел</h3>
+          <h3 id="adminArticlePanelTitle">Панель администратора: добавить статью в раздел</h3>
           <form class="form-grid" id="adminArticleForm">
+            <input type="hidden" name="articleId" value="">
             <label>
               Раздел
               <select name="section" required>
@@ -55,11 +56,20 @@
               Заголовок статьи
               <input type="text" name="title" minlength="4" required>
             </label>
-            <label>
-              Текст статьи
-              <textarea name="content" rows="5" minlength="20" required></textarea>
-            </label>
-            <button class="btn" type="submit">Опубликовать статью</button>
+            <div class="story-builder">
+              <div class="story-builder-head">
+                <p class="help-text">Соберите статью из блоков текста и фото/видео в нужном порядке.</p>
+                <div class="builder-actions">
+                  <button type="button" class="btn btn-light" id="adminAddTextBlockBtn">+ Текст</button>
+                  <button type="button" class="btn btn-light" id="adminAddMediaBlockBtn">+ Фото/видео</button>
+                </div>
+              </div>
+              <div id="adminArticleBlocks" class="story-blocks"></div>
+            </div>
+            <div class="builder-actions">
+              <button class="btn" type="submit" id="adminArticleSubmitBtn">Опубликовать статью</button>
+              <button class="btn btn-light hidden" type="button" id="adminArticleCancelEditBtn">Отмена редактирования</button>
+            </div>
             <p class="help-text" id="adminArticleStatus"></p>
           </form>
         </article>

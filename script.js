@@ -4,6 +4,7 @@ let currentUserEmail = null;
 let currentUserRole = null;
 let isAdmin = false;
 let mediaFieldCounter = 0;
+let sectionArticlesCache = null;
 const BACKEND_HINT =
   'Сервер недоступен. Запустите "python app.py" в папке проекта и откройте сайт по адресу http://127.0.0.1:5000 (не через файл).';
 
@@ -77,11 +78,20 @@ function renderArticleCards(rootId, articles, emptyText) {
     const title = document.createElement("h3");
     title.textContent = article.title;
     const content = document.createElement("p");
-    content.textContent = article.content;
+    content.className = "story-excerpt";
+    content.textContent = buildStoryPreviewText(article);
     const meta = document.createElement("p");
     meta.className = "story-meta";
     meta.textContent = `Автор: ${article.author}`;
-    card.append(title, content, meta);
+    const openBtn = document.createElement("a");
+    openBtn.className = "btn";
+    openBtn.href = `story.html?sectionArticleId=${article.id}`;
+    openBtn.textContent = "Читать полностью";
+    card.append(title, content, meta, openBtn);
+    card.addEventListener("click", (event) => {
+      if (event.target.closest("a, button, textarea, input")) return;
+      window.location.href = `story.html?sectionArticleId=${article.id}`;
+    });
     root.appendChild(card);
   });
 }
@@ -93,10 +103,12 @@ async function renderSectionArticles() {
   if (!acesRoot && !fateRoot && !forgeRoot) return;
   try {
     const sections = await api("/api/sections");
+    sectionArticlesCache = sections;
     renderArticleCards("sectionAcesList", sections.aces || [], "Пока нет статей в этом разделе.");
     renderArticleCards("sectionFateList", sections.fate || [], "Пока нет статей в этом разделе.");
     renderArticleCards("sectionForgeList", sections.forge || [], "Пока нет статей в этом разделе.");
   } catch {
+    sectionArticlesCache = null;
     renderArticleCards("sectionAcesList", [], "Не удалось загрузить статьи раздела.");
     renderArticleCards("sectionFateList", [], "Не удалось загрузить статьи раздела.");
     renderArticleCards("sectionForgeList", [], "Не удалось загрузить статьи раздела.");
@@ -246,25 +258,51 @@ function getStoryIdFromQuery() {
   return Number.isFinite(id) ? id : null;
 }
 
+function getSectionArticleIdFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const rawId = params.get("sectionArticleId");
+  const id = rawId ? Number(rawId) : NaN;
+  return Number.isFinite(id) ? id : null;
+}
+
+function findSectionArticleById(sectionArticleId, sectionsPayload) {
+  if (!sectionsPayload || !sectionArticleId) return null;
+  const pools = [sectionsPayload.aces || [], sectionsPayload.fate || [], sectionsPayload.forge || []];
+  for (const list of pools) {
+    const found = list.find((item) => item.id === sectionArticleId);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function renderStoryDetails() {
   const root = document.getElementById("storyDetails");
   if (!root) return;
 
   const storyId = getStoryIdFromQuery();
-  if (!storyId) {
+  const sectionArticleId = getSectionArticleIdFromQuery();
+  if (!storyId && !sectionArticleId) {
     root.innerHTML = '<article class="card"><h3>История не найдена</h3><p>Некорректный идентификатор истории.</p></article>';
     return;
   }
 
-  let stories = [];
+  let story = null;
+  let mode = "story";
   try {
-    stories = await api("/api/stories");
+    if (sectionArticleId) {
+      const sections = sectionArticlesCache || (await api("/api/sections"));
+      sectionArticlesCache = sections;
+      story = findSectionArticleById(sectionArticleId, sections);
+      mode = "section";
+    } else {
+      const stories = await api("/api/stories");
+      story = stories.find((item) => item.id === storyId);
+    }
   } catch (error) {
     root.innerHTML = `<article class="card"><h3>Ошибка</h3><p>${error.message}</p></article>`;
     return;
   }
 
-  const story = stories.find((item) => item.id === storyId);
   if (!story) {
     root.innerHTML = '<article class="card"><h3>История не найдена</h3><p>Возможно, она была удалена.</p></article>';
     return;
@@ -284,6 +322,34 @@ async function renderStoryDetails() {
   author.className = "story-meta";
   author.textContent = `Автор: ${story.author}`;
   article.appendChild(author);
+
+  if (isAdmin && mode === "section") {
+    const adminActions = document.createElement("div");
+    adminActions.className = "story-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn btn-light";
+    editBtn.textContent = "Редактировать статью";
+    editBtn.addEventListener("click", () => {
+      window.location.href = `stories.html?editSectionArticleId=${story.id}`;
+    });
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn btn-light";
+    deleteBtn.textContent = "Удалить статью";
+    deleteBtn.addEventListener("click", async () => {
+      if (!window.confirm("Удалить эту статью?")) return;
+      try {
+        await api(`/api/admin/sections/articles/${story.id}`, { method: "DELETE" });
+        alert("Статья удалена.");
+        window.location.href = "stories.html";
+      } catch (error) {
+        alert(error.message);
+      }
+    });
+    adminActions.append(editBtn, deleteBtn);
+    article.appendChild(adminActions);
+  }
 
   const commentsTitle = document.createElement("h4");
   commentsTitle.className = "comments-title";
@@ -314,6 +380,7 @@ async function renderStoryDetails() {
         removeBtn.type = "button";
         removeBtn.className = "btn btn-light comment-delete-btn";
         removeBtn.dataset.commentId = String(comment.id);
+        removeBtn.dataset.commentType = mode;
         removeBtn.textContent = "Удалить комментарий";
         controls.appendChild(removeBtn);
         item.appendChild(controls);
@@ -325,7 +392,8 @@ async function renderStoryDetails() {
 
   const commentForm = document.createElement("form");
   commentForm.className = "comment-form";
-  commentForm.dataset.storyId = String(story.id);
+  commentForm.dataset.storyId = mode === "story" ? String(story.id) : "";
+  commentForm.dataset.sectionArticleId = mode === "section" ? String(story.id) : "";
   commentForm.innerHTML =
     '<textarea name="content" rows="2" placeholder="Напишите комментарий..." required></textarea>' +
     '<button type="submit" class="btn">Отправить</button>';
@@ -359,10 +427,40 @@ function createMediaBlock() {
   return wrapper;
 }
 
+function createExistingMediaBlock(mediaItem) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "story-block";
+  wrapper.dataset.type = "media-existing";
+  wrapper.dataset.mediaId = String(mediaItem.id);
+  wrapper.innerHTML =
+    '<p class="story-block-title">Существующее медиа</p>' +
+    `<p class="help-text">Текущее: ${mediaItem.type === "video" ? "Видео" : "Изображение"}</p>` +
+    '<div class="story-block-tools"><button type="button" class="btn btn-light remove-block-btn">Удалить из статьи</button></div>';
+
+  if (mediaItem.type === "video") {
+    const video = document.createElement("video");
+    video.src = mediaItem.url;
+    video.controls = true;
+    video.className = "story-video";
+    wrapper.appendChild(video);
+  } else {
+    const image = document.createElement("img");
+    image.src = mediaItem.url;
+    image.alt = "Текущее медиа";
+    image.className = "story-image";
+    wrapper.appendChild(image);
+  }
+  return wrapper;
+}
+
 function setupStoryBuilder() {
-  const blocksRoot = document.getElementById("storyBlocks");
-  const addTextBtn = document.getElementById("addTextBlockBtn");
-  const addMediaBtn = document.getElementById("addMediaBlockBtn");
+  setupBlocksBuilder("storyBlocks", "addTextBlockBtn", "addMediaBlockBtn");
+}
+
+function setupBlocksBuilder(blocksRootId, addTextBtnId, addMediaBtnId, initialText = "") {
+  const blocksRoot = document.getElementById(blocksRootId);
+  const addTextBtn = document.getElementById(addTextBtnId);
+  const addMediaBtn = document.getElementById(addMediaBtnId);
   if (!blocksRoot || !addTextBtn || !addMediaBtn) return;
 
   const removeHandler = (event) => {
@@ -384,8 +482,37 @@ function setupStoryBuilder() {
   });
 
   if (!blocksRoot.children.length) {
-    blocksRoot.appendChild(createTextBlock());
+    blocksRoot.appendChild(createTextBlock(initialText));
   }
+}
+
+function collectBlocksPayload(formData, blocksRootId) {
+  const blocksRoot = document.getElementById(blocksRootId);
+  const blocksPayload = [];
+  if (!blocksRoot) return blocksPayload;
+
+  Array.from(blocksRoot.children).forEach((block) => {
+    const blockType = block.dataset.type;
+    if (blockType === "text") {
+      const textValue = block.querySelector("textarea")?.value.trim() || "";
+      blocksPayload.push({ type: "text", text: textValue });
+      return;
+    }
+    if (blockType === "media") {
+      const field = block.dataset.field;
+      const input = block.querySelector("input[type='file']");
+      if (!field || !input || !input.files?.length) return;
+      formData.set(field, input.files[0]);
+      blocksPayload.push({ type: "media", field });
+      return;
+    }
+    if (blockType === "media-existing") {
+      const mediaId = Number(block.dataset.mediaId || NaN);
+      if (!Number.isFinite(mediaId)) return;
+      blocksPayload.push({ type: "media_existing", mediaId });
+    }
+  });
+  return blocksPayload;
 }
 
 function setupAuthForms() {
@@ -466,28 +593,123 @@ function setupAuthForms() {
 function setupAdminArticleForm() {
   const form = document.getElementById("adminArticleForm");
   const status = document.getElementById("adminArticleStatus");
-  if (!form || !status) return;
+  const cancelEditBtn = document.getElementById("adminArticleCancelEditBtn");
+  const submitBtn = document.getElementById("adminArticleSubmitBtn");
+  const panelTitle = document.getElementById("adminArticlePanelTitle");
+  if (!form || !status || !submitBtn || !panelTitle) return;
+
+  setupBlocksBuilder("adminArticleBlocks", "adminAddTextBlockBtn", "adminAddMediaBlockBtn");
+
+  const setCreateMode = () => {
+    form.articleId.value = "";
+    submitBtn.textContent = "Опубликовать статью";
+    panelTitle.textContent = "Панель администратора: добавить статью в раздел";
+    cancelEditBtn?.classList.add("hidden");
+    status.textContent = `Вы вошли как администратор: ${currentUserEmail}`;
+    form.title.value = "";
+    form.section.value = "aces";
+    const root = document.getElementById("adminArticleBlocks");
+    if (root) {
+      root.innerHTML = "";
+      root.appendChild(createTextBlock());
+    }
+  };
+
+  const setEditMode = (article) => {
+    form.articleId.value = String(article.id);
+    submitBtn.textContent = "Сохранить изменения";
+    panelTitle.textContent = "Панель администратора: редактирование статьи";
+    cancelEditBtn?.classList.remove("hidden");
+    form.title.value = article.title || "";
+    form.section.value = article.section || "aces";
+    const root = document.getElementById("adminArticleBlocks");
+    if (root) {
+      root.innerHTML = "";
+      const blocks = Array.isArray(article.blocks) ? [...article.blocks].sort((a, b) => (a.order || 0) - (b.order || 0)) : [];
+      if (blocks.length) {
+        blocks.forEach((block) => {
+          if (block.type === "text") {
+            root.appendChild(createTextBlock((block.text || "").trim()));
+            return;
+          }
+          if (block.type === "media" && block.url) {
+            const existingFromMediaList = Array.isArray(article.media)
+              ? article.media.find((item) => item.filename === block.filename)
+              : null;
+            const mediaId = existingFromMediaList?.id;
+            if (!mediaId) return;
+            root.appendChild(
+              createExistingMediaBlock({
+                id: mediaId,
+                type: block.mediaType || existingFromMediaList.type,
+                url: block.url,
+              })
+            );
+          }
+        });
+      } else {
+        root.appendChild(createTextBlock(article.content === "[structured]" ? "" : article.content || ""));
+      }
+    }
+    status.textContent = "Режим редактирования: можно оставить текущие медиа или удалить выборочно.";
+  };
+
+  const params = new URLSearchParams(window.location.search);
+  const editSectionArticleId = Number(params.get("editSectionArticleId") || NaN);
+
   status.textContent = isAdmin
     ? `Вы вошли как администратор: ${currentUserEmail}`
     : "Только администратор может публиковать статьи в разделы.";
+
+  if (isAdmin) {
+    setCreateMode();
+  }
+
+  if (isAdmin && Number.isFinite(editSectionArticleId)) {
+    const loadForEdit = async () => {
+      try {
+        const sections = sectionArticlesCache || (await api("/api/sections"));
+        sectionArticlesCache = sections;
+        const article = findSectionArticleById(editSectionArticleId, sections);
+        if (!article) {
+          status.textContent = "Статья для редактирования не найдена.";
+          return;
+        }
+        setEditMode(article);
+      } catch (error) {
+        status.textContent = error.message;
+      }
+    };
+    loadForEdit();
+  }
+
+  cancelEditBtn?.addEventListener("click", () => {
+    setCreateMode();
+    window.history.replaceState({}, "", "stories.html");
+  });
+
   form.addEventListener("submit", async (event) => {
     event.preventDefault();
     if (!isAdmin) {
       status.textContent = "Нужен вход администратора.";
       return;
     }
-    const payload = {
-      section: form.section.value,
-      title: form.title.value.trim(),
-      content: form.content.value.trim(),
-    };
+    const articleId = form.articleId.value.trim();
+    const formData = new FormData(form);
+    formData.set("section", form.section.value);
+    formData.set("title", form.title.value.trim());
+    formData.set("content", "");
+    const blocksPayload = collectBlocksPayload(formData, "adminArticleBlocks");
+    formData.set("blocks", JSON.stringify(blocksPayload));
+
     try {
-      await api("/api/admin/sections/articles", {
-        method: "POST",
-        body: JSON.stringify(payload),
+      await api(articleId ? `/api/admin/sections/articles/${articleId}` : "/api/admin/sections/articles", {
+        method: articleId ? "PUT" : "POST",
+        body: formData,
       });
-      form.reset();
-      status.textContent = "Статья опубликована.";
+      status.textContent = articleId ? "Статья обновлена." : "Статья опубликована.";
+      setCreateMode();
+      window.history.replaceState({}, "", "stories.html");
       await renderSectionArticles();
     } catch (error) {
       status.textContent = error.message;
@@ -515,24 +737,7 @@ function setupAddStoryForm() {
     const title = form.title.value.trim();
     formData.set("title", title);
     formData.set("content", "");
-
-    const blocksRoot = document.getElementById("storyBlocks");
-    const blocksPayload = [];
-    if (blocksRoot) {
-      Array.from(blocksRoot.children).forEach((block) => {
-        const blockType = block.dataset.type;
-        if (blockType === "text") {
-          const textValue = block.querySelector("textarea")?.value.trim() || "";
-          blocksPayload.push({ type: "text", text: textValue });
-        } else if (blockType === "media") {
-          const field = block.dataset.field;
-          const input = block.querySelector("input[type='file']");
-          if (!field || !input || !input.files?.length) return;
-          formData.set(field, input.files[0]);
-          blocksPayload.push({ type: "media", field });
-        }
-      });
-    }
+    const blocksPayload = collectBlocksPayload(formData, "storyBlocks");
     formData.set("blocks", JSON.stringify(blocksPayload));
 
     try {
@@ -551,7 +756,7 @@ function setupAddStoryForm() {
 
 function setupDefaultForms() {
   document
-    .querySelectorAll("form:not(#registerForm):not(#loginForm):not(#addStoryForm)")
+    .querySelectorAll("form:not(#registerForm):not(#loginForm):not(#adminLoginForm):not(#addStoryForm):not(#adminArticleForm)")
     .forEach((form) => {
       form.addEventListener("submit", (event) => {
         event.preventDefault();
@@ -569,10 +774,16 @@ function setupComments() {
         return;
       }
       const commentId = button.dataset.commentId;
+      const commentType = button.dataset.commentType || "story";
       if (!commentId) return;
       if (!window.confirm("Удалить этот комментарий?")) return;
       try {
-        await api(`/api/admin/comments/${commentId}`, { method: "DELETE" });
+        await api(
+          commentType === "section"
+            ? `/api/admin/sections/comments/${commentId}`
+            : `/api/admin/comments/${commentId}`,
+          { method: "DELETE" }
+        );
         await renderStoryDetails();
         setupComments();
         setupImagePreview();
@@ -591,10 +802,14 @@ function setupComments() {
         return;
       }
       const storyId = form.dataset.storyId;
+      const sectionArticleId = form.dataset.sectionArticleId;
       const contentField = form.querySelector('textarea[name="content"]');
       const content = contentField.value.trim();
       try {
-        await api(`/api/stories/${storyId}/comments`, {
+        const endpoint = sectionArticleId
+          ? `/api/sections/articles/${sectionArticleId}/comments`
+          : `/api/stories/${storyId}/comments`;
+        await api(endpoint, {
           method: "POST",
           body: JSON.stringify({ content }),
         });
