@@ -310,6 +310,17 @@ h2 {
   color: #4b5563;
 }
 
+.featured-preview-media {
+  margin: 10px 0 12px;
+}
+
+.featured-preview-media .story-image,
+.featured-preview-media .story-video {
+  max-height: 240px;
+  object-fit: cover;
+  background: #111827;
+}
+
 .story-details-wrap {
   margin-top: 14px;
 }

@@ -423,20 +423,56 @@ def list_featured_home_articles() -> Any:
         """
     )
     rows = cur.fetchall()
+    article_ids = [row["id"] for row in rows]
+    blocks_by_article: dict[int, list[dict[str, Any]]] = {}
+    if article_ids:
+        placeholders = ",".join("?" for _ in article_ids)
+        cur.execute(
+            f"""
+            SELECT article_id, block_order, block_type, text_content, filename, media_type
+            FROM section_article_blocks
+            WHERE article_id IN ({placeholders})
+            ORDER BY block_order ASC
+            """,
+            article_ids,
+        )
+        block_rows = cur.fetchall()
+        for block in block_rows:
+            article_id = block["article_id"]
+            item: dict[str, Any] = {
+                "type": block["block_type"],
+                "order": block["block_order"],
+            }
+            if block["block_type"] == "text":
+                item["text"] = block["text_content"] or ""
+            else:
+                item["url"] = f"/uploads/{block['filename']}" if block["filename"] else None
+                item["mediaType"] = block["media_type"]
+            blocks_by_article.setdefault(article_id, []).append(item)
     conn.close()
 
-    featured = [
-        {
-            "featuredId": row["featured_id"],
-            "id": row["id"],
-            "section": row["section"],
-            "title": row["title"],
-            "content": row["content"],
-            "author": row["author_email"],
-            "createdAt": row["created_at"],
-        }
-        for row in rows
-    ]
+    featured: list[dict[str, Any]] = []
+    for row in rows:
+        blocks = blocks_by_article.get(row["id"], [])
+        first_media = next((block for block in blocks if block.get("type") == "media" and block.get("url")), None)
+        featured.append(
+            {
+                "featuredId": row["featured_id"],
+                "id": row["id"],
+                "section": row["section"],
+                "title": row["title"],
+                "content": row["content"],
+                "author": row["author_email"],
+                "createdAt": row["created_at"],
+                "blocks": blocks,
+                "previewMedia": {
+                    "url": first_media["url"],
+                    "type": first_media["mediaType"],
+                }
+                if first_media
+                else None,
+            }
+        )
     return jsonify(featured)
 
 

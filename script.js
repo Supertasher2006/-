@@ -139,6 +139,24 @@ async function renderFeaturedHomeArticles() {
         card.className = "card";
         const title = document.createElement("h3");
         title.textContent = article.title;
+        if (article.previewMedia?.url) {
+          const mediaWrap = document.createElement("div");
+          mediaWrap.className = "featured-preview-media";
+          if (article.previewMedia.type === "video") {
+            const video = document.createElement("video");
+            video.src = article.previewMedia.url;
+            video.controls = true;
+            video.className = "story-video";
+            mediaWrap.appendChild(video);
+          } else {
+            const image = document.createElement("img");
+            image.src = article.previewMedia.url;
+            image.alt = `Превью статьи: ${article.title}`;
+            image.className = "story-image";
+            mediaWrap.appendChild(image);
+          }
+          card.appendChild(mediaWrap);
+        }
         const content = document.createElement("p");
         content.className = "story-excerpt";
         content.textContent = buildStoryPreviewText(article);
