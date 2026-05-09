@@ -317,7 +317,7 @@ h2 {
 .featured-preview-media .story-image,
 .featured-preview-media .story-video {
   max-height: 240px;
-  object-fit: cover;
+  object-fit: contain;
   background: #111827;
 }
 
