@@ -5,6 +5,7 @@ let currentUserRole = null;
 let isAdmin = false;
 let mediaFieldCounter = 0;
 let sectionArticlesCache = null;
+let featuredHomeArticlesCache = null;
 const BACKEND_HINT =
   'Сервер недоступен. Запустите "python app.py" в папке проекта и откройте сайт по адресу http://127.0.0.1:5000 (не через файл).';
 
@@ -112,6 +113,72 @@ async function renderSectionArticles() {
     renderArticleCards("sectionAcesList", [], "Не удалось загрузить статьи раздела.");
     renderArticleCards("sectionFateList", [], "Не удалось загрузить статьи раздела.");
     renderArticleCards("sectionForgeList", [], "Не удалось загрузить статьи раздела.");
+  }
+}
+
+async function renderFeaturedHomeArticles() {
+  const homeRoot = document.getElementById("homeFeaturedList");
+  const adminFeaturedRoot = document.getElementById("adminFeaturedHomeList");
+  if (!homeRoot && !adminFeaturedRoot) return;
+
+  let featured = [];
+  try {
+    featured = await api("/api/home/featured");
+    featuredHomeArticlesCache = featured;
+  } catch {
+    featuredHomeArticlesCache = [];
+  }
+
+  if (homeRoot) {
+    homeRoot.innerHTML = "";
+    if (!featured.length) {
+      homeRoot.innerHTML = '<article class="card"><p>Пока на главной нет выбранных статей.</p></article>';
+    } else {
+      featured.forEach((article) => {
+        const card = document.createElement("article");
+        card.className = "card";
+        const title = document.createElement("h3");
+        title.textContent = article.title;
+        const content = document.createElement("p");
+        content.className = "story-excerpt";
+        content.textContent = buildStoryPreviewText(article);
+        const meta = document.createElement("p");
+        meta.className = "story-meta";
+        meta.textContent = `Автор: ${article.author}`;
+        const openBtn = document.createElement("a");
+        openBtn.className = "btn";
+        openBtn.href = `story.html?sectionArticleId=${article.id}`;
+        openBtn.textContent = "Читать полностью";
+        card.append(title, content, meta, openBtn);
+        card.addEventListener("click", (event) => {
+          if (event.target.closest("a, button, textarea, input")) return;
+          window.location.href = `story.html?sectionArticleId=${article.id}`;
+        });
+        homeRoot.appendChild(card);
+      });
+    }
+  }
+
+  if (adminFeaturedRoot) {
+    adminFeaturedRoot.innerHTML = "";
+    if (!featured.length) {
+      adminFeaturedRoot.innerHTML = '<p class="help-text">Пока статей на главной нет.</p>';
+    } else {
+      featured.forEach((article) => {
+        const row = document.createElement("div");
+        row.className = "featured-admin-item";
+        const text = document.createElement("p");
+        text.className = "help-text";
+        text.textContent = `${article.title} (${article.section})`;
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-light";
+        removeBtn.textContent = "Убрать с главной";
+        removeBtn.dataset.featuredId = String(article.featuredId);
+        row.append(text, removeBtn);
+        adminFeaturedRoot.appendChild(row);
+      });
+    }
   }
 }
 
@@ -596,6 +663,8 @@ function setupAdminArticleForm() {
   const cancelEditBtn = document.getElementById("adminArticleCancelEditBtn");
   const submitBtn = document.getElementById("adminArticleSubmitBtn");
   const panelTitle = document.getElementById("adminArticlePanelTitle");
+  const homeSelect = document.getElementById("homeFeaturedArticleSelect");
+  const addHomeBtn = document.getElementById("addHomeFeaturedBtn");
   if (!form || !status || !submitBtn || !panelTitle) return;
 
   setupBlocksBuilder("adminArticleBlocks", "adminAddTextBlockBtn", "adminAddMediaBlockBtn");
@@ -665,6 +734,24 @@ function setupAdminArticleForm() {
     setCreateMode();
   }
 
+  const fillHomeFeaturedSelect = async () => {
+    if (!homeSelect) return;
+    try {
+      const sections = sectionArticlesCache || (await api("/api/sections"));
+      sectionArticlesCache = sections;
+      const allArticles = [...(sections.aces || []), ...(sections.fate || []), ...(sections.forge || [])];
+      homeSelect.innerHTML = '<option value="">Выберите статью</option>';
+      allArticles.forEach((article) => {
+        const option = document.createElement("option");
+        option.value = String(article.id);
+        option.textContent = `[${article.section}] ${article.title}`;
+        homeSelect.appendChild(option);
+      });
+    } catch {
+      homeSelect.innerHTML = '<option value="">Не удалось загрузить список статей</option>';
+    }
+  };
+
   if (isAdmin && Number.isFinite(editSectionArticleId)) {
     const loadForEdit = async () => {
       try {
@@ -681,6 +768,11 @@ function setupAdminArticleForm() {
       }
     };
     loadForEdit();
+  }
+
+  if (isAdmin) {
+    fillHomeFeaturedSelect();
+    renderFeaturedHomeArticles();
   }
 
   cancelEditBtn?.addEventListener("click", () => {
@@ -711,6 +803,46 @@ function setupAdminArticleForm() {
       setCreateMode();
       window.history.replaceState({}, "", "stories.html");
       await renderSectionArticles();
+      await renderFeaturedHomeArticles();
+      await fillHomeFeaturedSelect();
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+
+  addHomeBtn?.addEventListener("click", async () => {
+    if (!isAdmin) {
+      status.textContent = "Нужен вход администратора.";
+      return;
+    }
+    const articleId = Number(homeSelect?.value || NaN);
+    if (!Number.isFinite(articleId)) {
+      status.textContent = "Выберите статью для добавления на главную.";
+      return;
+    }
+    try {
+      await api("/api/admin/home/featured", {
+        method: "POST",
+        body: JSON.stringify({ articleId }),
+      });
+      status.textContent = "Статья добавлена на главную.";
+      if (homeSelect) homeSelect.value = "";
+      await renderFeaturedHomeArticles();
+    } catch (error) {
+      status.textContent = error.message;
+    }
+  });
+
+  document.getElementById("adminFeaturedHomeList")?.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-featured-id]");
+    if (!button) return;
+    if (!isAdmin) return;
+    const featuredId = Number(button.dataset.featuredId || NaN);
+    if (!Number.isFinite(featuredId)) return;
+    try {
+      await api(`/api/admin/home/featured/${featuredId}`, { method: "DELETE" });
+      status.textContent = "Статья убрана с главной.";
+      await renderFeaturedHomeArticles();
     } catch (error) {
       status.textContent = error.message;
     }
@@ -941,6 +1073,7 @@ async function bootstrap() {
   await loadSession();
   updateAuthUi();
   await renderSectionArticles();
+  await renderFeaturedHomeArticles();
   await renderUserStories();
   await renderStoryDetails();
   setupComments();

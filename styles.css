@@ -314,6 +314,23 @@ h2 {
   margin-top: 14px;
 }
 
+.featured-admin-list {
+  margin-top: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.featured-admin-item {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: #fafbff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
 .stories-tabs {
   display: flex;
   flex-wrap: wrap;

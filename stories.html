@@ -70,6 +70,21 @@
               <button class="btn" type="submit" id="adminArticleSubmitBtn">Опубликовать статью</button>
               <button class="btn btn-light hidden" type="button" id="adminArticleCancelEditBtn">Отмена редактирования</button>
             </div>
+            <div class="story-builder">
+              <div class="story-builder-head">
+                <p class="help-text">Добавить уже опубликованную статью на главную страницу.</p>
+              </div>
+              <label>
+                Статья для главной
+                <select id="homeFeaturedArticleSelect">
+                  <option value="">Выберите статью</option>
+                </select>
+              </label>
+              <div class="builder-actions">
+                <button class="btn btn-light" type="button" id="addHomeFeaturedBtn">Добавить на главную</button>
+              </div>
+              <div id="adminFeaturedHomeList" class="featured-admin-list"></div>
+            </div>
             <p class="help-text" id="adminArticleStatus"></p>
           </form>
         </article>

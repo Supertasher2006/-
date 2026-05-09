@@ -138,6 +138,16 @@ def init_db() -> None:
     )
     cur.execute(
         """
+        CREATE TABLE IF NOT EXISTS featured_home_articles (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            section_article_id INTEGER NOT NULL UNIQUE,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (section_article_id) REFERENCES section_articles(id)
+        )
+        """
+    )
+    cur.execute(
+        """
         CREATE TABLE IF NOT EXISTS story_media (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             story_id INTEGER NOT NULL,
@@ -387,6 +397,7 @@ def list_section_articles() -> Any:
         result[section].append(
             {
                 "id": row["id"],
+                "section": section,
                 "title": row["title"],
                 "content": row["content"],
                 "author": row["author_email"],
@@ -397,6 +408,90 @@ def list_section_articles() -> Any:
             }
         )
     return jsonify(result)
+
+
+@app.get("/api/home/featured")
+def list_featured_home_articles() -> Any:
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute(
+        """
+        SELECT f.id AS featured_id, a.id, a.section, a.title, a.content, a.author_email, a.created_at
+        FROM featured_home_articles f
+        JOIN section_articles a ON a.id = f.section_article_id
+        ORDER BY f.id DESC
+        """
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    featured = [
+        {
+            "featuredId": row["featured_id"],
+            "id": row["id"],
+            "section": row["section"],
+            "title": row["title"],
+            "content": row["content"],
+            "author": row["author_email"],
+            "createdAt": row["created_at"],
+        }
+        for row in rows
+    ]
+    return jsonify(featured)
+
+
+@app.post("/api/admin/home/featured")
+def add_featured_home_article() -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    data = request.get_json(silent=True) or {}
+    try:
+        article_id = int(data.get("articleId"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Некорректный идентификатор статьи."}), 400
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("SELECT id FROM section_articles WHERE id = ?", (article_id,))
+    row = cur.fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"error": "Статья не найдена."}), 404
+
+    try:
+        cur.execute(
+            "INSERT INTO featured_home_articles (section_article_id) VALUES (?)",
+            (article_id,),
+        )
+    except sqlite3.IntegrityError:
+        conn.close()
+        return jsonify({"error": "Эта статья уже добавлена на главную."}), 409
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
+@app.delete("/api/admin/home/featured/<int:featured_id>")
+def delete_featured_home_article(featured_id: int) -> Any:
+    auth_error = ensure_admin()
+    if auth_error:
+        _, status = auth_error
+        msg = "Нужна авторизация администратора." if status == 401 else "Недостаточно прав."
+        return jsonify({"error": msg}), status
+
+    conn = get_db()
+    cur = conn.cursor()
+    cur.execute("DELETE FROM featured_home_articles WHERE id = ?", (featured_id,))
+    deleted = cur.rowcount
+    conn.commit()
+    conn.close()
+    if deleted == 0:
+        return jsonify({"error": "Запись на главной не найдена."}), 404
+    return jsonify({"ok": True})
 
 
 @app.post("/api/admin/sections/articles")
@@ -670,6 +765,7 @@ def delete_section_article(article_id: int) -> Any:
     cur.execute("DELETE FROM section_article_comments WHERE article_id = ?", (article_id,))
     cur.execute("DELETE FROM section_article_blocks WHERE article_id = ?", (article_id,))
     cur.execute("DELETE FROM section_article_media WHERE article_id = ?", (article_id,))
+    cur.execute("DELETE FROM featured_home_articles WHERE section_article_id = ?", (article_id,))
     cur.execute("DELETE FROM section_articles WHERE id = ?", (article_id,))
     deleted = cur.rowcount
     conn.commit()
